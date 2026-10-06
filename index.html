@@ -226,11 +226,24 @@ details > summary { cursor:pointer; font-weight:600; }
       contents: [{ role: "user", parts: parts }],
       generationConfig: { temperature: 0, responseMimeType: "application/json" }
     };
-    var j = await gfetch("models/" + encodeURIComponent(model) + ":generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(body)
-    });
+    var j, delays = [5000, 15000, 30000];
+    for (var attempt = 0; ; attempt++) {
+      try {
+        j = await gfetch("models/" + encodeURIComponent(model) + ":generateContent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify(body)
+        });
+        break;
+      } catch (e) {
+        // Перегрузка или сбой сервера: подождать и повторить несколько раз
+        if ((e.code === 503 || e.code === 500) && attempt < delays.length) {
+          await new Promise(function (r) { setTimeout(r, delays[attempt]); });
+          continue;
+        }
+        throw e;
+      }
+    }
     var c = j.candidates && j.candidates[0];
     var txt = c && c.content && c.content.parts ? c.content.parts.map(function (p) { return p.text || ""; }).join("") : "";
     if (!txt) throw { code: "empty", msg: "Пустой ответ (возможно, фото отклонено). Попробуй другое фото." };
@@ -539,7 +552,19 @@ details > summary { cursor:pointer; font-weight:600; }
     }
     if (!S.runs.length) { out.status = "warn"; out.msg = "Палета ещё не проверена."; return out; }
     if (!c.seen || c.boxes === 0) { out.status = "miss"; out.msg = "На фото не найдено. Посчитай вручную."; return out; }
-    if (!pb) { out.status = "warn"; out.msg = "Видно коробок: " + c.boxes + ". Укажи, сколько штук в коробке" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + "."; return out; }
+    if (!pb) {
+      out.status = "warn";
+      if (qty != null && qty > 0 && qty % c.boxes === 0) {
+        out.suggest = qty / c.boxes;
+        out.msg = "Видно коробок: " + c.boxes + ", в накладной " + qty + " шт. Получается " + out.suggest + " шт в коробке (" + qty + " ÷ " + c.boxes + "). Верно?" +
+          (c.pack && c.pack !== out.suggest ? " Но на коробке нейросеть прочитала " + c.pack + ", проверь." : "");
+      } else if (qty != null && qty > 0) {
+        out.msg = "Видно коробок: " + c.boxes + ", в накладной " + qty + " шт. " + qty + " не делится на " + c.boxes + " поровну: возможно, часть коробок не видна. Укажи штук в коробке сам" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + ".";
+      } else {
+        out.msg = "Видно коробок: " + c.boxes + ". Укажи, сколько штук в коробке" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + ".";
+      }
+      return out;
+    }
     out.fact = c.boxes * pb;
     if (qty == null) { out.msg = "По фото " + out.fact + " шт, а в накладной количество не указано."; return out; }
     var diff = out.fact - qty;
@@ -571,6 +596,12 @@ details > summary { cursor:pointer; font-weight:600; }
       d.appendChild(el("div", "m", "арт. " + (r.art || "—") + " · в накладной: " + (r.qty == null ? "?" : r.qty) + " шт" +
         (S.runs.length ? " · видно коробок: " + e.c.boxes + (e.c.parts.length > 1 ? " (" + e.c.parts.join("+") + ")" : "") : "")));
       d.appendChild(el("div", "msg", e.msg));
+      if (e.suggest) {
+        var yes = el("button", "btn small primary", "Да, " + e.suggest + " шт в коробке");
+        yes.style.marginTop = "6px";
+        yes.onclick = function () { S.perBox[k] = e.suggest; saveState(); renderAll(); };
+        d.appendChild(yes);
+      }
       if (e.c.notes.length) d.appendChild(el("div", "m", "Заметка: " + e.c.notes.join(" ")));
 
       var ctl = el("div", "ctl");
