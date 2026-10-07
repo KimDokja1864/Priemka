@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Приёмка v2</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1f6feb">
 <style>
 :root {
   box-sizing: border-box;
@@ -78,6 +82,18 @@ details > summary { cursor:pointer; font-weight:600; }
 .extra { border:1px dashed var(--bad); border-radius:12px; padding:10px; margin-bottom:8px; }
 .empty { color:var(--muted); text-align:center; padding:14px 6px; }
 .priv { font-size:12.5px; color:var(--muted); }
+
+.item.warn{border-left:6px solid var(--warn-line)}
+.item.miss{border:2px dashed var(--bad)}
+.pill.attn{background:var(--warn-bg);border-color:var(--warn-line);font-weight:600}
+#cam{position:fixed;inset:0;background:#000;z-index:50;display:none;flex-direction:column}
+#cam video{flex:1;min-height:0;width:100%;object-fit:contain}
+#camFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s}
+.camBar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));color:#fff;background:#000}
+.camBar span{min-width:96px}
+#camShot{width:72px;height:72px;border-radius:36px;border:5px solid #fff;background:#e33;cursor:pointer}
+.hist{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:8px 0;flex-wrap:wrap}
+.hist .grow{flex:1 1 160px}
 </style>
 </head>
 <body>
@@ -131,6 +147,7 @@ details > summary { cursor:pointer; font-weight:600; }
       <button class="btn" id="palBtnCam">📷 Снять сторону</button>
       <button class="btn" id="palBtnPick">🖼️ Из галереи</button>
     </div>
+    <div class="row" style="margin-top:8px;align-items:center"><span>Палета №</span><select id="palSel" style="font:inherit;padding:8px;border-radius:8px"></select><button class="btn small" id="palNew">+ Новая палета</button></div>
     <div class="thumbs" id="palThumbs"></div>
     <button class="btn primary big" id="palRead" disabled style="margin-top:8px">Проверить палету</button>
     <div class="status" id="palStatus"></div>
@@ -147,13 +164,27 @@ details > summary { cursor:pointer; font-weight:600; }
     <div class="row" style="margin-bottom:10px">
       <button class="btn small" id="btnFilter">Показать только спорные</button>
       <button class="btn small" id="btnCsv">⬇️ CSV</button>
+      <button class="btn small" id="btnAct">📝 Акт расхождений</button>
+      <button class="btn small primary" id="btnFinish">✔ Завершить приёмку</button>
     </div>
     <div id="items"></div>
     <div id="extras"></div>
   </section>
 
+  <section class="card">
+    <h2>📚 История</h2>
+    <div id="histBox"></div>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="bkSave">💾 Скачать копию</button><button class="btn small" id="bkLoad">📥 Загрузить копию</button></div>
+    <input id="bkFile" type="file" accept=".json,application/json" hidden>
+    <div class="hint">«Завершить приёмку» сохраняет результат сюда и очищает экран для новой. Каталог «штук в коробке» остаётся.</div>
+  </section>
+
   <p class="priv">Фото отправляются в Google Gemini. На бесплатном уровне Google может использовать присланные данные для улучшения своих сервисов. Убедись, что на работе это разрешено.</p>
 </main>
+
+<div id="act" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bg);overflow:auto;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 20px"><div style="max-width:760px;margin:0 auto"><h2>📝 Акт расхождений</h2><textarea id="actText" style="width:100%;height:55vh;font:inherit;font-size:14px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--input-bg);color:var(--text)"></textarea><div class="row" style="margin-top:8px"><button class="btn primary" id="actCopy">Копировать</button><button class="btn" id="actTxt">Скачать .txt</button><button class="btn" id="actClose">Закрыть</button></div><div class="hint">Текст можно править перед отправкой.</div></div></div>
+<div id="cam"><video id="camVideo" playsinline muted autoplay></video><div id="camFlash"></div>
+  <div class="camBar"><span id="camN">Снято: 0</span><button id="camShot" aria-label="Снять"></button><button class="btn" id="camDone">Готово</button></div></div>
 
 <script>
 (function () {
@@ -167,7 +198,8 @@ details > summary { cursor:pointer; font-weight:600; }
   // runs: результаты по каждому снимку палеты
   var S = { rows: [], perBox: {}, manual: {}, runs: [] };
   var invPhotos = [];   // {file,url}
-  var palItems = [];    // {id,url|null,file|null,run|null}
+  var palItems = [];    // {id,url|null,file|null,run|null,pal}
+  var curPal = 1;
   var onlyIssues = false;
   var apiKey = "", model = "gemini-2.5-flash";
 
@@ -183,7 +215,7 @@ details > summary { cursor:pointer; font-weight:600; }
     } catch (e) {}
     apiKey = lsGet(LS_KEY) || "";
     model = lsGet(LS_MODEL) || model;
-    S.runs.forEach(function (r) { palItems.push({ id: r.id, url: null, file: null, run: r }); });
+    S.runs.forEach(function (r) { palItems.push({ id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }); });
   }
 
   function norm(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
@@ -305,7 +337,7 @@ details > summary { cursor:pointer; font-weight:600; }
       var f = el("figure");
       if (p.url) { var img = el("img"); img.src = p.url; img.alt = label + " " + (i + 1); f.appendChild(img); }
       else { f.appendChild(el("div", "ph", "готово")); }
-      var cap = label + " " + (i + 1) + (p.run ? " ✓" : "");
+      var cap = (p.pal ? "П" + p.pal + " · " : "") + label + " " + (i + 1) + (p.run ? " ✓" : "");
       f.appendChild(el("figcaption", null, cap));
       var b = el("button", null, "✕"); b.setAttribute("aria-label", "Убрать");
       b.onclick = function () { removeFn(i); };
@@ -357,7 +389,7 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- шаг 1: накладная ----------
   function addInv(list) {
-    Array.prototype.forEach.call(list, function (f) { if (invPhotos.length < 10) invPhotos.push({ file: f, url: URL.createObjectURL(f), run: null }); });
+    Array.prototype.forEach.call(list, function (f) { if (invPhotos.length < 20) invPhotos.push({ file: f, url: URL.createObjectURL(f), run: null }); });
     renderInvThumbs();
     setStatus("invStatus", invPhotos.length ? "Фото: " + invPhotos.length + ". Нажми «Распознать накладную»." : "");
   }
@@ -436,7 +468,7 @@ details > summary { cursor:pointer; font-weight:600; }
   $("invClear").onclick = function () {
     if (confirm("Очистить накладную и результаты проверки палеты?")) { S.rows = []; S.manual = {}; S.runs = []; palItems = palItems.filter(function (p) { return p.file; }); palItems.forEach(function (p) { p.run = null; }); saveState(); renderInv(); renderPalThumbs(); renderAll(); }
   };
-  $("invBtnCam").onclick = function () { $("invCam").click(); };
+  $("invBtnCam").onclick = function () { openCam("inv"); };
   $("invBtnPick").onclick = function () { $("invFile").click(); };
   $("invFile").onchange = function () { addInv($("invFile").files); $("invFile").value = ""; };
   $("invCam").onchange = function () { addInv($("invCam").files); $("invCam").value = ""; };
@@ -445,8 +477,8 @@ details > summary { cursor:pointer; font-weight:600; }
   var nextId = Date.now();
   function addPal(list) {
     Array.prototype.forEach.call(list, function (f) {
-      if (palItems.length >= 12) return;
-      palItems.push({ id: "p" + (nextId++), file: f, url: URL.createObjectURL(f), run: null });
+      if (palItems.length >= 40) return;
+      palItems.push({ id: "p" + (nextId++), file: f, url: URL.createObjectURL(f), run: null, pal: curPal });
     });
     renderPalThumbs();
     setStatus("palStatus", S.rows.length ? "" : "Сначала нужна накладная (шаг 1).");
@@ -454,6 +486,7 @@ details > summary { cursor:pointer; font-weight:600; }
   function renderPalThumbs() {
     thumbsFor($("palThumbs"), palItems, function (i) {
       var p = palItems[i];
+      if (p.run && !confirm("Результаты этого снимка пропадут, и найденные по нему позиции станут «не найдено». Удалить?")) return;
       if (p.url) URL.revokeObjectURL(p.url);
       if (p.run) S.runs = S.runs.filter(function (r) { return r.id !== p.id; });
       palItems.splice(i, 1); saveState(); renderPalThumbs(); renderAll();
@@ -486,7 +519,7 @@ details > summary { cursor:pointer; font-weight:600; }
       try {
         var blob = await wholeImage(p.file, 1800);
         var res = await ask([{ text: palPrompt() }, { inline_data: { mime_type: "image/jpeg", data: await blobToB64(blob) } }]);
-        var run = { id: p.id, counts: {}, packs: {}, conf: {}, notes: {}, extra: [] };
+        var run = { id: p.id, pal: p.pal || 1, counts: {}, packs: {}, conf: {}, notes: {}, extra: [] };
         var items = (res && res.items) || [];
         items.forEach(function (it) {
           var art = norm(it.art);
@@ -517,7 +550,7 @@ details > summary { cursor:pointer; font-weight:600; }
     palItems.forEach(function (p) { p.run = null; });
     saveState(); renderPalThumbs(); renderAll(); setStatus("palStatus", "");
   };
-  $("palBtnCam").onclick = function () { $("palCam").click(); };
+  $("palBtnCam").onclick = function () { openCam("pal"); };
   $("palBtnPick").onclick = function () { $("palFile").click(); };
   $("palFile").onchange = function () { addPal($("palFile").files); $("palFile").value = ""; };
   $("palCam").onchange = function () { addPal($("palCam").files); $("palCam").value = ""; };
@@ -526,17 +559,17 @@ details > summary { cursor:pointer; font-weight:600; }
   var ICON = { ok: "✅", warn: "⚠️", bad: "❌", miss: "⬜" };
 
   function calc(r) {
-    var k = key(r), boxes = 0, seen = false, parts = [], conf = null, notes = [], pack = null;
+    var k = key(r), boxes = 0, seen = false, parts = [], conf = null, notes = [], pack = null, byPal = {};
     var rank = { low: 0, medium: 1, high: 2 };
     S.runs.forEach(function (run, i) {
       if (run.counts[k] != null) {
-        seen = true; boxes += run.counts[k]; parts.push(run.counts[k]);
+        seen = true; boxes += run.counts[k]; parts.push(run.counts[k]); byPal[run.pal || 1] = (byPal[run.pal || 1] || 0) + run.counts[k];
         if (run.conf[k] && (conf == null || rank[run.conf[k]] < rank[conf])) conf = run.conf[k];
         if (run.notes[k]) notes.push(run.notes[k]);
         if (run.packs[k]) pack = run.packs[k];
       } else parts.push(0);
     });
-    return { boxes: boxes, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack };
+    return { byPal: byPal, boxes: boxes, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack };
   }
 
   function evaluate(r) {
@@ -586,6 +619,8 @@ details > summary { cursor:pointer; font-weight:600; }
     function pill(t) { pills.appendChild(el("span", "pill", t)); }
     pill("Позиций: " + S.rows.length);
     pill("✅ " + cnt.ok); pill("⚠️ " + cnt.warn); pill("❌ " + cnt.bad); pill("⬜ " + cnt.miss);
+    var at = cnt.warn + cnt.bad + cnt.miss;
+    pills.insertBefore(el("span", "pill attn", at ? "Требуют проверки: " + at : "Всё сходится ✅"), pills.firstChild);
 
     S.rows.forEach(function (r, i) {
       var e = evals[i];
@@ -594,7 +629,7 @@ details > summary { cursor:pointer; font-weight:600; }
       var d = el("div", "item " + e.status);
       d.appendChild(el("div", "t", ICON[e.status] + " " + (r.name || "(без названия)")));
       d.appendChild(el("div", "m", "арт. " + (r.art || "—") + " · в накладной: " + (r.qty == null ? "?" : r.qty) + " шт" +
-        (S.runs.length ? " · видно коробок: " + e.c.boxes + (e.c.parts.length > 1 ? " (" + e.c.parts.join("+") + ")" : "") : "")));
+        (S.runs.length ? " · видно коробок: " + e.c.boxes + palStr(e.c) : "")));
       d.appendChild(el("div", "msg", e.msg));
       if (e.suggest) {
         var yes = el("button", "btn small primary", "Да, " + e.suggest + " шт в коробке");
@@ -652,11 +687,162 @@ details > summary { cursor:pointer; font-weight:600; }
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   };
 
+  // ---------- своя камера: снимай подряд ----------
+  var camStream = null, camTarget = "", camCount = 0;
+  async function openCam(t) {
+    var fb = function () { $(t === "inv" ? "invCam" : "palCam").click(); };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fb(); return; }
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+    } catch (e) { fb(); return; }
+    camTarget = t; camCount = 0; $("camN").textContent = "Снято: 0";
+    var v = $("camVideo"); v.srcObject = camStream; $("cam").style.display = "flex";
+    if (v.play) v.play().catch(function () {});
+  }
+  function closeCam() {
+    if (camStream) camStream.getTracks().forEach(function (t) { t.stop(); });
+    camStream = null; $("cam").style.display = "none";
+  }
+  $("camShot").onclick = async function () {
+    if (!camStream) return;
+    var blob = null;
+    try { if (window.ImageCapture) blob = await new ImageCapture(camStream.getVideoTracks()[0]).takePhoto(); } catch (e) {}
+    if (!blob) {
+      var v = $("camVideo"), c = document.createElement("canvas");
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext("2d").drawImage(v, 0, 0); blob = await canvasBlob(c);
+    }
+    if (!blob) return;
+    (camTarget === "inv" ? addInv : addPal)([new File([blob], "shot.jpg", { type: blob.type || "image/jpeg" })]);
+    camCount++; $("camN").textContent = "Снято: " + camCount;
+    var fl = $("camFlash"); fl.style.opacity = 1; setTimeout(function () { fl.style.opacity = 0; }, 120);
+  };
+  $("camDone").onclick = closeCam;
+
+  // ---------- история ----------
+  var LS_HIST = "priemka2_hist";
+  function hist() { try { return JSON.parse(lsGet(LS_HIST) || "[]"); } catch (e) { return []; } }
+  function renderHistory() {
+    var box = $("histBox"); box.textContent = "";
+    var h = hist();
+    if (!h.length) { box.appendChild(el("div", "empty", "Пока пусто.")); return; }
+    h.forEach(function (e) {
+      var d = el("div", "hist"), g = el("div", "grow");
+      g.appendChild(el("div", "t", e.title));
+      g.appendChild(el("div", "m", new Date(e.ts).toLocaleString("ru-RU") + " · ✅ " + e.c.ok + " ⚠️ " + e.c.warn + " ❌ " + e.c.bad + " ⬜ " + e.c.miss));
+      var o = el("button", "btn small", "Открыть"), x = el("button", "btn small", "🗑");
+      o.onclick = function () { openHist(e.id); };
+      x.onclick = function () {
+        if (!confirm("Удалить запись «" + e.title + "»?")) return;
+        try { localStorage.setItem(LS_HIST, JSON.stringify(hist().filter(function (y) { return y.id !== e.id; }))); } catch (er) {}
+        renderHistory();
+      };
+      d.appendChild(g); d.appendChild(o); d.appendChild(x); box.appendChild(d);
+    });
+  }
+  $("btnFinish").onclick = function () {
+    if (!S.rows.length) return;
+    var t = prompt("Название приёмки (например, номер накладной):", new Date().toLocaleString("ru-RU"));
+    if (t === null) return;
+    var c = { ok: 0, warn: 0, bad: 0, miss: 0 };
+    S.rows.forEach(function (r) { c[evaluate(r).status]++; });
+    var h = hist();
+    h.unshift({ id: Date.now(), ts: Date.now(), title: t || "Без названия", rows: S.rows, perBox: S.perBox, manual: S.manual, runs: S.runs, c: c });
+    try { localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 50))); }
+    catch (e) { alert("Не хватило места для истории. Удали старые записи и попробуй снова."); return; }
+    S.rows = []; S.manual = {}; S.runs = []; palItems = []; invPhotos = [];
+    saveState(); renderInv(); renderInvThumbs(); renderPalThumbs(); renderAll(); renderHistory();
+    setStatus("invStatus", "Приёмка сохранена в историю. Можно начинать новую."); setStatus("palStatus", "");
+    window.scrollTo(0, 0);
+  };
+  function openHist(id) {
+    var e = hist().find(function (x) { return x.id === id; });
+    if (!e) return;
+    if (S.rows.length && !confirm("Текущая приёмка на экране будет заменена. Продолжить?")) return;
+    S.rows = e.rows; S.manual = e.manual || {}; S.runs = e.runs || []; Object.assign(S.perBox, e.perBox || {});
+    palItems = S.runs.map(function (r) { return { id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }; });
+    saveState(); renderInv(); renderPalThumbs(); renderAll(); window.scrollTo(0, 0);
+  }
+
+  // ---------- палеты ----------
+  function palStr(c) {
+    var ks = Object.keys(c.byPal);
+    if (ks.length > 1) return " (" + ks.map(function (k) { return "П" + k + ": " + c.byPal[k]; }).join(", ") + ")";
+    return c.parts.length > 1 ? " (" + c.parts.join("+") + ")" : "";
+  }
+  function renderPalSel() {
+    var mx = curPal;
+    palItems.forEach(function (p) { if ((p.pal || 1) > mx) mx = p.pal; });
+    var sel = $("palSel"); sel.textContent = "";
+    for (var i = 1; i <= mx; i++) { var o = el("option", null, String(i)); o.value = i; sel.appendChild(o); }
+    sel.value = curPal;
+  }
+  $("palSel").onchange = function () { curPal = Number($("palSel").value) || 1; };
+  $("palNew").onclick = function () {
+    var mx = curPal; palItems.forEach(function (p) { if ((p.pal || 1) > mx) mx = p.pal; });
+    curPal = mx + 1; renderPalSel();
+  };
+
+  // ---------- акт расхождений ----------
+  function actText() {
+    var sh = [], ov = [], ms = [], nc = [], ex = [];
+    S.rows.forEach(function (r) {
+      var e = evaluate(r), k = key(r), q = r.qty, man = S.manual[k] != null;
+      var nm = (r.name || "(без названия)") + (r.art ? " [арт. " + r.art + "]" : "");
+      var qs = q == null ? "?" : q;
+      if (e.status === "miss") ms.push("- " + nm + ": по накладной " + qs + " шт, на фото не найдено");
+      else if (e.fact != null && q != null && e.fact < q) sh.push("- " + nm + ": по накладной " + q + ", фактически " + e.fact + " (-" + (q - e.fact) + ")" + (man ? "" : " — по фото, не подтверждено"));
+      else if (e.fact != null && q != null && e.fact > q) ov.push("- " + nm + ": по накладной " + q + ", фактически " + e.fact + " (+" + (e.fact - q) + ")" + (man ? "" : " — по фото, не подтверждено"));
+      else if (e.status === "warn" && e.fact == null) nc.push("- " + nm + ": по накладной " + qs + " шт — " + e.msg);
+    });
+    S.runs.forEach(function (run) { (run.extra || []).forEach(function (x) { if (x.boxes > 0) ex.push("- " + x.description + " — коробок: " + x.boxes); }); });
+    var out = ["АКТ О РАСХОЖДЕНИЯХ ПРИЁМКИ", "Дата: " + new Date().toLocaleString("ru-RU"), ""];
+    function sec(t, a) { if (a.length) { out.push(t); a.forEach(function (x) { out.push(x); }); out.push(""); } }
+    sec("НЕДОСТАЧА:", sh); sec("ИЗЛИШКИ:", ov); sec("НЕ НАЙДЕНО НА ФОТО:", ms);
+    sec("НЕ ИЗ НАКЛАДНОЙ:", ex); sec("НЕ ПРОВЕРЕНО:", nc);
+    if (out.length === 3) out.push("Расхождений не выявлено.", "");
+    out.push("Составлено по фотографиям. Позиции с пометкой «не подтверждено» нужно перепроверить вручную.");
+    return out.join("\n");
+  }
+  $("btnAct").onclick = function () {
+    if (!S.rows.length) return;
+    $("actText").value = actText(); $("act").style.display = "block";
+  };
+  $("actClose").onclick = function () { $("act").style.display = "none"; };
+  $("actCopy").onclick = function () {
+    var ta = $("actText");
+    (navigator.clipboard ? navigator.clipboard.writeText(ta.value) : Promise.reject()).catch(function () { ta.select(); document.execCommand("copy"); });
+  };
+  function saveBlob(text, type, name) {
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: type })); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  $("actTxt").onclick = function () { saveBlob("\uFEFF" + $("actText").value, "text/plain;charset=utf-8", "akt-raskhozhdeniy.txt"); };
+
+  // ---------- резервная копия ----------
+  $("bkSave").onclick = function () {
+    saveBlob(JSON.stringify({ v: 1, S: S, hist: hist() }), "application/json", "priemka-kopiya-" + new Date().toISOString().slice(0, 10) + ".json");
+  };
+  $("bkLoad").onclick = function () { $("bkFile").click(); };
+  $("bkFile").onchange = async function () {
+    var f = $("bkFile").files[0]; $("bkFile").value = ""; if (!f) return;
+    try {
+      var d = JSON.parse(await f.text());
+      if (!d || !d.S || !Array.isArray(d.S.rows)) throw new Error("bad");
+      if (!confirm("Текущие данные и история будут заменены копией. Продолжить?")) return;
+      S.rows = d.S.rows; S.perBox = d.S.perBox || {}; S.manual = d.S.manual || {}; S.runs = d.S.runs || [];
+      palItems = S.runs.map(function (r) { return { id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }; });
+      try { localStorage.setItem(LS_HIST, JSON.stringify(d.hist || [])); } catch (e) {}
+      saveState(); renderInv(); renderPalThumbs(); renderPalSel(); renderAll(); renderHistory();
+      alert("Копия загружена.");
+    } catch (e) { alert("Файл не похож на копию приёмки."); }
+  };
+
   // ---------- старт ----------
   loadState();
   $("apiKey").value = apiKey; $("model").value = model;
   if (!apiKey) $("settings").open = true;
-  renderInv(); renderInvThumbs(); renderPalThumbs(); renderAll(); refreshButtons();
+  renderInv(); renderInvThumbs(); renderPalThumbs(); renderAll(); refreshButtons(); renderHistory(); renderPalSel();
   $("apiKey").oninput = function () { /* ключ применяется по кнопке «Сохранить и проверить» */ };
 })();
 </script>
