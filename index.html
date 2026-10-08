@@ -94,6 +94,7 @@ details > summary { cursor:pointer; font-weight:600; }
 #camShot{width:72px;height:72px;border-radius:36px;border:5px solid #fff;background:#e33;cursor:pointer}
 .hist{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:8px 0;flex-wrap:wrap}
 .hist .grow{flex:1 1 160px}
+.item,.item .m,.item .msg,.item .t{overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -517,7 +518,7 @@ details > summary { cursor:pointer; font-weight:600; }
       var p = todo[i];
       setStatus("palStatus", "Смотрю снимок " + (i + 1) + " из " + todo.length + "…");
       try {
-        var blob = await wholeImage(p.file, 1800);
+        var blob = await wholeImage(p.file, 2560);
         var res = await ask([{ text: palPrompt() }, { inline_data: { mime_type: "image/jpeg", data: await blobToB64(blob) } }]);
         var run = { id: p.id, pal: p.pal || 1, counts: {}, packs: {}, conf: {}, notes: {}, extra: [] };
         var items = (res && res.items) || [];
@@ -695,6 +696,7 @@ details > summary { cursor:pointer; font-weight:600; }
     try {
       camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
     } catch (e) { fb(); return; }
+    try { await camStream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
     camTarget = t; camCount = 0; $("camN").textContent = "Снято: 0";
     var v = $("camVideo"); v.srcObject = camStream; $("cam").style.display = "flex";
     if (v.play) v.play().catch(function () {});
@@ -706,7 +708,13 @@ details > summary { cursor:pointer; font-weight:600; }
   $("camShot").onclick = async function () {
     if (!camStream) return;
     var blob = null;
-    try { if (window.ImageCapture) blob = await new ImageCapture(camStream.getVideoTracks()[0]).takePhoto(); } catch (e) {}
+    try {
+      if (window.ImageCapture) {
+        var ic = new ImageCapture(camStream.getVideoTracks()[0]), opt = {};
+        try { var cp = await ic.getPhotoCapabilities(); if (cp.imageWidth && cp.imageHeight) { opt.imageWidth = cp.imageWidth.max; opt.imageHeight = cp.imageHeight.max; } } catch (e) {}
+        blob = await ic.takePhoto(opt);
+      }
+    } catch (e) {}
     if (!blob) {
       var v = $("camVideo"), c = document.createElement("canvas");
       c.width = v.videoWidth; c.height = v.videoHeight;
@@ -766,9 +774,10 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- палеты ----------
   function palStr(c) {
-    var ks = Object.keys(c.byPal);
+    var ks = Object.keys(c.byPal).filter(function (k) { return c.byPal[k] > 0; });
     if (ks.length > 1) return " (" + ks.map(function (k) { return "П" + k + ": " + c.byPal[k]; }).join(", ") + ")";
-    return c.parts.length > 1 ? " (" + c.parts.join("+") + ")" : "";
+    var nz = c.parts.filter(function (n) { return n > 0; });
+    return nz.length > 1 ? " (" + nz.join("+") + ")" : "";
   }
   function renderPalSel() {
     var mx = curPal;
