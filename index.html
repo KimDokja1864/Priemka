@@ -66,6 +66,8 @@ label.f { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
 details > summary { cursor:pointer; font-weight:600; }
 .inv { display:grid; grid-template-columns: 84px 1fr 78px 36px; gap:6px; align-items:center; padding:5px 0; border-top:1px solid var(--line); }
 .inv.warn { background:var(--warn-bg); }
+.inv2{display:grid;grid-template-columns:1fr 64px 1fr;gap:6px;padding:0 0 6px}
+.inv2 input{font-size:13px;min-height:34px;padding:5px 8px}
 .inv.head { font-size:12px; color:var(--muted); border-top:none; }
 .inv button { border:none; background:none; color:var(--bad); font-size:20px; cursor:pointer; }
 .pills { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
@@ -125,12 +127,18 @@ details > summary { cursor:pointer; font-weight:600; }
   <!-- Настройки -->
   <section class="card">
     <details id="settings">
-      <summary>⚙️ Настройки Gemini</summary>
+      <summary>⚙️ Настройки ИИ</summary>
       <label class="f" for="apiKey">API-ключ из Google AI Studio</label>
       <input id="apiKey" type="password" autocomplete="off" placeholder="AIza...">
       <label class="f" for="model">Модель</label>
       <input id="model" type="text" list="models" placeholder="gemini-2.5-flash" autocapitalize="off" autocorrect="off">
       <datalist id="models"></datalist>
+      <label class="f" for="aiMode">Какой ИИ использовать</label>
+      <select id="aiMode" style="font:inherit;padding:8px;border-radius:8px;width:100%"><option value="gemini">Gemini (основной)</option><option value="auto">Авто: Gemini, при лимите — лёгкий</option><option value="light">Только лёгкий (бесплатный, Groq)</option></select>
+      <label class="f" for="groqKey">Ключ лёгкого ИИ (Groq, бесплатно: console.groq.com)</label>
+      <input id="groqKey" type="password" autocomplete="off" placeholder="gsk_...">
+      <label class="f" for="lightModel">Модель лёгкого ИИ</label>
+      <input id="lightModel" type="text" placeholder="meta-llama/llama-4-scout-17b-16e-instruct" autocapitalize="off" autocorrect="off">
       <div class="row" style="margin-top:10px">
         <button class="btn" id="btnSaveKey">Сохранить и проверить</button>
       </div>
@@ -141,7 +149,7 @@ details > summary { cursor:pointer; font-weight:600; }
 
   <!-- Шаг 1 -->
   <section class="card">
-    <h2>1. Накладная</h2>
+    <h2>1. Накладные</h2>
     <input id="invFile" type="file" accept="image/*" multiple hidden>
     <input id="invCam" type="file" accept="image/*" capture="environment" hidden>
     <div class="row">
@@ -149,9 +157,12 @@ details > summary { cursor:pointer; font-weight:600; }
       <button class="btn" id="invBtnPick">🖼️ Из галереи</button>
     </div>
     <div class="thumbs" id="invThumbs"></div>
+    <input id="invNo" type="text" placeholder="№ накладной (если сам не определится)" style="margin-top:8px">
     <button class="btn primary big" id="invRead" disabled style="margin-top:8px">Распознать накладную</button>
     <div class="status" id="invStatus"></div>
+    <div id="invDocs"></div>
     <div id="invTable"></div>
+    <datalist id="units"><option value="шт"><option value="уп"><option value="кор"></datalist>
     <div class="row" style="margin-top:8px">
       <button class="btn small" id="invAdd">+ Строка</button>
       <button class="btn small" id="invClear">Очистить накладную</button>
@@ -175,6 +186,7 @@ details > summary { cursor:pointer; font-weight:600; }
     <div class="hint">Снимай так, чтобы этикетки были читаемы: 3-4 стороны, по возможности ближе. Обработаются только новые снимки. После проверки нажми на снимок: найденное обведено красным. Для одной позиции есть кнопка «Показать на фото» в результате.</div>
     <div class="row" style="margin-top:8px">
       <button class="btn small" id="palClear">Новая палета (сбросить результаты)</button>
+      <button class="btn small" id="btnStop">⏹ Остановить обработку</button>
     </div>
   </section>
 
@@ -223,7 +235,8 @@ details > summary { cursor:pointer; font-weight:600; }
   // ---------- состояние ----------
   // rows: строки накладной; perBox: артикул -> штук в коробке; manual: артикул -> факт вручную;
   // runs: результаты по каждому снимку палеты
-  var S = { rows: [], perBox: {}, manual: {}, runs: [], lost: {}, ghost: [] };
+  var S = { rows: [], perBox: {}, perPack: {}, manual: {}, runs: [], lost: {}, ghost: [] };
+  var groqKey = "", lightModel = "meta-llama/llama-4-scout-17b-16e-instruct", aiMode = "gemini", stopReq = false;
   var invPhotos = [];   // {file,url}
   var palItems = [];    // {id,url|null,file|null,run|null,pal}
   var curPal = 1;
@@ -237,11 +250,12 @@ details > summary { cursor:pointer; font-weight:600; }
     try {
       var s = JSON.parse(lsGet(LS_STATE) || "null");
       if (s && Array.isArray(s.rows)) {
-        S.rows = s.rows; S.perBox = s.perBox || {}; S.manual = s.manual || {}; S.runs = Array.isArray(s.runs) ? s.runs : []; S.lost = s.lost || {}; S.ghost = Array.isArray(s.ghost) ? s.ghost : [];
+        S.rows = s.rows; S.perBox = s.perBox || {}; S.perPack = s.perPack || {}; S.manual = s.manual || {}; S.runs = Array.isArray(s.runs) ? s.runs : []; S.lost = s.lost || {}; S.ghost = Array.isArray(s.ghost) ? s.ghost : [];
       }
     } catch (e) {}
     apiKey = lsGet(LS_KEY) || "";
     model = lsGet(LS_MODEL) || model;
+    groqKey = lsGet("priemka2_groq") || ""; lightModel = lsGet("priemka2_light") || lightModel; aiMode = lsGet("priemka2_mode") || aiMode;
     S.runs.forEach(function (r) { palItems.push({ id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }); });
   }
 
@@ -259,7 +273,7 @@ details > summary { cursor:pointer; font-weight:600; }
   function explain(err) {
     var c = err && err.code, m = (err && err.msg) || "";
     if (c === "net") return "Нет связи с Google. Проверь интернет и включён ли обходной путь (VPN).";
-    if (c === 400 && /api key|API_KEY/i.test(m)) return "Ключ не подходит. Проверь, что скопировал его целиком.";
+    if (c === 401 || (c === 400 && /api key|API_KEY/i.test(m))) return "Ключ не подходит. Проверь, что скопировал его целиком.";
     if (c === 403 || /location|region/i.test(m)) return "Google отказал в доступе: возможно, не включён обходной путь или ключ без прав.\n" + m;
     if (c === 404) return "Такой модели нет. Выбери другую в настройках.\n" + m;
     if (c === 429) return "Достигнут бесплатный лимит запросов. Подожди минуту (или до завтра, если исчерпан дневной лимит) и нажми кнопку снова.";
@@ -279,13 +293,41 @@ details > summary { cursor:pointer; font-weight:600; }
     return res.json();
   }
 
+  var useMR = true;
   async function ask(parts) {
+    if (aiMode === "light" || (aiMode === "auto" && !apiKey)) return askLight(parts);
+    try { return await askGemini(parts); }
+    catch (e) {
+      if (aiMode === "auto" && groqKey && (e.code === 429 || e.code === 503 || e.code === 500 || e.code === "net")) return askLight(parts);
+      throw e;
+    }
+  }
+  // Лёгкий бесплатный ИИ: Groq (Llama 4 Scout), формат OpenAI
+  async function askLight(parts) {
+    if (!groqKey) throw { code: 400, msg: "Нет ключа лёгкого ИИ (Groq). Добавь его в настройках." };
+    var content = parts.map(function (p) {
+      return p.text != null ? { type: "text", text: p.text } : { type: "image_url", image_url: { url: "data:" + p.inline_data.mime_type + ";base64," + p.inline_data.data } };
+    });
+    var res;
+    try {
+      res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + groqKey },
+        body: JSON.stringify({ model: lightModel, messages: [{ role: "user", content: content }], temperature: 0, max_tokens: 4096, response_format: { type: "json_object" } })
+      });
+    } catch (e) { throw { code: "net", msg: String(e) }; }
+    if (!res.ok) { var m = ""; try { m = (await res.json()).error.message; } catch (e) {} throw { code: res.status, msg: "Лёгкий ИИ: " + m }; }
+    var j = await res.json(), t = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!t) throw { code: "empty", msg: "Пустой ответ лёгкого ИИ. Попробуй другое фото." };
+    return parseJson(t);
+  }
+  async function askGemini(parts) {
     if (!apiKey) throw { code: 400, msg: "API_KEY missing" };
     var body = {
       contents: [{ role: "user", parts: parts }],
       generationConfig: { temperature: 0, responseMimeType: "application/json" }
     };
-    var j, delays = [5000, 15000, 30000];
+    if (useMR) body.generationConfig.mediaResolution = "MEDIA_RESOLUTION_HIGH";
+    var j, delays = (aiMode === "auto" && groqKey) ? [] : [5000, 15000, 30000];
     for (var attempt = 0; ; attempt++) {
       try {
         j = await gfetch("models/" + encodeURIComponent(model) + ":generateContent", {
@@ -295,6 +337,7 @@ details > summary { cursor:pointer; font-weight:600; }
         });
         break;
       } catch (e) {
+        if (e.code === 400 && useMR && /mediaResolution|media_resolution/i.test(e.msg || "")) { useMR = false; delete body.generationConfig.mediaResolution; attempt--; continue; }
         // Перегрузка или сбой сервера: подождать и повторить несколько раз
         if ((e.code === 503 || e.code === 500) && attempt < delays.length) {
           await new Promise(function (r) { setTimeout(r, delays[attempt]); });
@@ -358,12 +401,27 @@ details > summary { cursor:pointer; font-weight:600; }
     return out;
   }
 
+  var thQ = Promise.resolve();
+  function mkThumb(p) {
+    if (!p.file || p.th || p.thBusy) return; p.thBusy = true;
+    thQ = thQ.then(async function () {
+      var u = p.url;
+      try {
+        var b = await createImageBitmap(p.file, { imageOrientation: "from-image", resizeHeight: 168, resizeQuality: "low" });
+        var c = document.createElement("canvas"); c.width = b.width; c.height = b.height;
+        c.getContext("2d").drawImage(b, 0, 0); if (b.close) b.close();
+        var bl = await new Promise(function (r) { c.toBlob(r, "image/jpeg", 0.7); });
+        if (bl) u = URL.createObjectURL(bl);
+      } catch (e) {}
+      p.th = u; if (p.onth) p.onth(u);
+    });
+  }
   function thumbsFor(container, list, removeFn, label, openFn) {
     container.textContent = "";
     list.forEach(function (p, i) {
       var f = el("figure");
       if (p.url) {
-        var img = el("img"); img.src = p.url; img.alt = label + " " + (i + 1);
+        var img = el("img"); if (p.th) img.src = p.th; else { mkThumb(p); p.onth = function (u) { img.src = u; }; } img.alt = label + " " + (i + 1);
         if (openFn) img.onclick = function () { openFn(i); };
         else img.style.cursor = "default";
         f.appendChild(img);
@@ -379,9 +437,10 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- настройки ----------
   function refreshButtons() {
-    $("invRead").disabled = !(invPhotos.length && apiKey);
+    var ai = aiMode === "gemini" ? !!apiKey : (aiMode === "light" ? !!groqKey : !!(apiKey || groqKey));
+    $("invRead").disabled = !(invPhotos.length && ai);
     var pending = palItems.some(function (p) { return !p.run && p.file; });
-    $("palRead").disabled = !(pending && apiKey && S.rows.length);
+    $("palRead").disabled = !(pending && ai && S.rows.length);
   }
 
   async function loadModels() {
@@ -400,7 +459,12 @@ details > summary { cursor:pointer; font-weight:600; }
 
   $("btnSaveKey").onclick = async function () {
     var k = $("apiKey").value.trim();
-    if (!k) { setStatus("keyStatus", "Вставь ключ.", true); return; }
+    groqKey = $("groqKey").value.trim(); lightModel = $("lightModel").value.trim() || lightModel; aiMode = $("aiMode").value;
+    lsSet("priemka2_groq", groqKey); lsSet("priemka2_light", lightModel); lsSet("priemka2_mode", aiMode);
+    if (!k) {
+      if (groqKey && aiMode !== "gemini") { setStatus("keyStatus", "Сохранено. Лёгкий ИИ: " + lightModel + ". Ключ Gemini не указан."); refreshButtons(); return; }
+      setStatus("keyStatus", "Вставь ключ.", true); return;
+    }
     apiKey = k; lsSet(LS_KEY, k);
     setStatus("keyStatus", "Проверяю ключ…");
     try {
@@ -417,53 +481,61 @@ details > summary { cursor:pointer; font-weight:600; }
     }
     refreshButtons();
   };
+  $("aiMode").onchange = function () { aiMode = $("aiMode").value; lsSet("priemka2_mode", aiMode); refreshButtons(); };
+  $("btnStop").onclick = function () { stopReq = true; };
   $("model").onchange = function () { model = $("model").value.trim() || model; lsSet(LS_MODEL, model); };
 
   // ---------- шаг 1: накладная ----------
   function addInv(list) {
-    Array.prototype.forEach.call(list, function (f) { if (invPhotos.length < 20) invPhotos.push({ file: f, url: URL.createObjectURL(f), run: null }); });
+    Array.prototype.forEach.call(list, function (f) { if (invPhotos.length < 100) invPhotos.push({ file: f, url: URL.createObjectURL(f), run: null }); });
     renderInvThumbs();
     setStatus("invStatus", invPhotos.length ? "Фото: " + invPhotos.length + ". Нажми «Распознать накладную»." : "");
   }
   function renderInvThumbs() {
-    thumbsFor($("invThumbs"), invPhotos, function (i) { URL.revokeObjectURL(invPhotos[i].url); invPhotos.splice(i, 1); renderInvThumbs(); }, "Лист");
+    thumbsFor($("invThumbs"), invPhotos, function (i) { URL.revokeObjectURL(invPhotos[i].url); if (invPhotos[i].th && invPhotos[i].th !== invPhotos[i].url) URL.revokeObjectURL(invPhotos[i].th); invPhotos.splice(i, 1); renderInvThumbs(); }, "Лист");
     refreshButtons();
   }
 
   var INV_PROMPT =
-    "На изображениях лист складской накладной (перемещение товара) на русском языке. " +
+    "На изображениях лист складской накладной на русском языке. " +
     "Если изображений несколько, это идущие подряд, слегка перекрывающиеся части одного фото: не дублируй строки из зоны перекрытия. " +
-    "Извлеки ТОЛЬКО строки таблицы товаров. Для каждой строки верни объект " +
-    '{"art": "артикул строкой", "name": "наименование как напечатано", "qty": число или null, "uncertain": true или false}. ' +
+    "Внимательно читай МЕЛКИЙ текст: колонку единиц измерения (шт, уп, кор, ШТ, УП), номер и дату накладной, цифры под штрихкодами. " +
+    'Верни JSON-объект {"doc":"номер накладной или пустая строка","date":"дата или пустая строка","rows":[...]}. ' +
+    'Каждая строка таблицы товаров: {"art":"артикул строкой","bc":"цифры штрихкода, если напечатаны, иначе пустая строка","name":"наименование как напечатано","unit":"шт|уп|кор или как напечатано","qty":число или null,"uncertain":true или false}. ' +
     "Правила: 1) qty бери из колонки «Кол-во». Если колонка обрезана краем фото, число не видно или нечётко, ставь null и не угадывай. " +
     "2) Рукописные пометки (зачёркивания, галочки, подчёркивания, обводки) НЕ числа. Если рукописью зачёркнуто число, а напечатанного не видно, ставь null и uncertain true. " +
     "3) Наименование копируй точно, вместе с газ/н/газ, объёмом и тарой (пэт, ж/б, ст/б). " +
-    "4) uncertain=true при любом сомнении. 5) Игнорируй шапку, штрихкоды и закрашенные области. " +
-    "Ответ: ТОЛЬКО JSON-массив объектов, без пояснений.";
+    "4) uncertain=true при любом сомнении. 5) Шапку и закрашенные области игнорируй (кроме номера и даты). " +
+    "Ответ: ТОЛЬКО JSON, без пояснений.";
 
-  function mergeInv(list) {
+  function mergeInv(list, doc) {
     list.forEach(function (x) {
       var art = norm(x.art), name = norm(x.name);
       if (!art && !name) return;
       var qty = (typeof x.qty === "number" && isFinite(x.qty)) ? x.qty : null;
-      var ex = S.rows.find(function (r) { return art ? norm(r.art) === art : norm(r.name) === name; });
-      if (ex) { if (ex.qty == null && qty != null) ex.qty = qty; return; }
-      S.rows.push({ art: art, name: name, qty: qty, warn: !!x.uncertain });
+      var bc = String(x.bc || "").replace(/\D/g, ""), unit = norm(x.unit).toLowerCase();
+      var ex = S.rows.find(function (r) { return (r.doc || "") === doc && (art ? norm(r.art) === art : norm(r.name) === name); });
+      if (ex) { if (ex.qty == null && qty != null) ex.qty = qty; if (!ex.bc && bc) ex.bc = bc; if (!ex.unit && unit) ex.unit = unit; return; }
+      S.rows.push({ art: art, name: name, qty: qty, warn: !!x.uncertain, bc: bc, unit: unit, doc: doc });
     });
   }
 
   var busyInv = false;
   $("invRead").onclick = async function () {
-    if (busyInv) return; busyInv = true; $("invRead").disabled = true;
-    var n0 = S.rows.length, failed = 0, lastErr = null;
+    if (busyInv) return; busyInv = true; stopReq = false; $("invRead").disabled = true;
+    var n0 = S.rows.length, failed = 0, lastErr = null, lastDoc = "";
     for (var i = 0; i < invPhotos.length; i++) {
+      if (stopReq) break;
       setStatus("invStatus", "Читаю фото " + (i + 1) + " из " + invPhotos.length + "…");
       try {
         var parts = [{ text: INV_PROMPT }];
         var ss = await strips(invPhotos[i].file);
         for (var k = 0; k < ss.length; k++) parts.push({ inline_data: { mime_type: "image/jpeg", data: await blobToB64(ss[k]) } });
         var res = await ask(parts);
-        mergeInv(Array.isArray(res) ? res : (res.rows || res.items || []));
+        var dn = res && !Array.isArray(res) ? (res.doc && typeof res.doc === "object" ? res.doc.number : res.doc) : "";
+        var doc = norm($("invNo").value) || (norm(dn) ? norm(dn) + (norm(res.date) ? " от " + norm(res.date) : "") : "") || lastDoc || "без номера";
+        lastDoc = doc;
+        mergeInv(Array.isArray(res) ? res : (res.rows || res.items || []), doc);
         saveState(); renderInv(); renderAll();
       } catch (e) { failed++; lastErr = e; if (e.code === 429 || e.code === "net" || e.code === 403 || (e.code === 400)) break; }
     }
@@ -473,7 +545,30 @@ details > summary { cursor:pointer; font-weight:600; }
     busyInv = false; refreshButtons();
   };
 
+  function renderDocs() {
+    var box = $("invDocs"); box.textContent = "";
+    var cnt = {}, ord = [];
+    S.rows.forEach(function (r) { var n = r.doc || "без номера"; if (cnt[n] == null) { cnt[n] = 0; ord.push(n); } cnt[n]++; });
+    ord.forEach(function (n) {
+      var w = el("div", "hist"), g = el("div", "grow");
+      g.appendChild(el("div", "t", "📄 " + n)); g.appendChild(el("div", "m", "позиций: " + cnt[n]));
+      var e = el("button", "btn small", "✎"), x = el("button", "btn small", "🗑");
+      e.onclick = function () {
+        var v = prompt("Номер накладной:", n); if (v === null) return; v = norm(v);
+        S.rows.forEach(function (r) { if ((r.doc || "без номера") === n) r.doc = v; });
+        saveState(); renderInv(); renderAll();
+      };
+      x.onclick = function () {
+        if (!confirm("Удалить накладную «" + n + "» со всеми строками?")) return;
+        S.rows = S.rows.filter(function (r) { return (r.doc || "без номера") !== n; });
+        saveState(); renderInv(); renderAll();
+      };
+      w.appendChild(g); w.appendChild(e); w.appendChild(x); box.appendChild(w);
+    });
+  }
+
   function renderInv() {
+    renderDocs();
     var box = $("invTable"); box.textContent = "";
     if (!S.rows.length) { box.appendChild(el("div", "empty", "Накладная пока пустая.")); return; }
     var h = el("div", "inv head");
@@ -494,9 +589,16 @@ details > summary { cursor:pointer; font-weight:600; }
       x.onclick = function () { S.rows.splice(i, 1); saveState(); renderInv(); renderAll(); };
       [a, n, q, x].forEach(function (c) { d.appendChild(c); });
       box.appendChild(d);
+      var d2 = el("div", "inv2");
+      function f2(val, ph, fld, list) {
+        var t = el("input"); t.type = "text"; t.value = val || ""; t.placeholder = ph; if (list) t.setAttribute("list", list);
+        t.oninput = function () { r[fld] = t.value; saveState(); }; t.onchange = renderAll; d2.appendChild(t);
+      }
+      f2(r.bc, "Штрихкод", "bc"); f2(r.unit, "ед.", "unit", "units"); f2(r.doc, "№ накладной", "doc");
+      box.appendChild(d2);
     });
   }
-  $("invAdd").onclick = function () { S.rows.push({ art: "", name: "", qty: null, warn: false }); saveState(); renderInv(); renderAll(); };
+  $("invAdd").onclick = function () { S.rows.push({ art: "", name: "", qty: null, warn: false, bc: "", unit: "", doc: "" }); saveState(); renderInv(); renderAll(); };
   $("invClear").onclick = function () {
     if (confirm("Очистить накладную и результаты проверки палеты?")) { S.rows = []; S.manual = {}; S.runs = []; S.lost = {}; S.ghost = []; palItems = palItems.filter(function (p) { return p.file; }); palItems.forEach(function (p) { p.run = null; }); saveState(); renderInv(); renderPalThumbs(); renderAll(); }
   };
@@ -507,7 +609,7 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- шаг 2: палета ----------
   var nextId = Date.now();
-  var MAX_PAL = 120;
+  var MAX_PAL = 500;
   function addPal(list) {
     var full = false;
     Array.prototype.forEach.call(list, function (f) {
@@ -521,11 +623,11 @@ details > summary { cursor:pointer; font-weight:600; }
     thumbsFor($("palThumbs"), palItems, function (i) {
       var p = palItems[i];
       if (p.run && !confirm("Снимок удалится, но результат сохранится: зелёные и красные позиции останутся как есть, а жёлтые, найденные на нём, станут фиолетовыми. Удалить?")) return;
-      if (p.url) URL.revokeObjectURL(p.url);
+      if (p.url) URL.revokeObjectURL(p.url); if (p.th && p.th !== p.url) URL.revokeObjectURL(p.th);
       if (p.run) {
-        S.rows.forEach(function (r) {
+        M().forEach(function (r) {
           var k = key(r);
-          if (p.run.counts && p.run.counts[k] != null && S.manual[k] == null && evaluate(r).status === "warn") S.lost[k] = true;
+          if (inRun(p.run, k) && S.manual[k] == null && evaluate(r).status === "warn") S.lost[k] = true;
         });
         S.runs = S.runs.filter(function (r) { return r.id !== p.id; });
         S.ghost.push(p.run);
@@ -535,19 +637,28 @@ details > summary { cursor:pointer; font-weight:600; }
     refreshButtons();
   }
 
-  function palPrompt() {
-    var list = S.rows.map(function (r) { return (norm(r.art) || "?") + " — " + norm(r.name); }).join("\n");
-    return "Ты помогаешь приёмщику на складе. На фото — паллета (или её часть) с коробками напитков и продуктов.\n" +
-      "Список товаров из накладной (артикул — название):\n" + list + "\n\n" +
-      "Задача: для каждого товара из списка, коробки которого ты видишь на фото, определи артикул и посчитай, сколько таких коробок/упаковок ВИДНО на этом фото.\n" +
+  function palPrompt(codes) {
+    var list = M().map(function (r) { return (norm(r.art) || "?") + (r.bc ? " [ШК " + r.bc + "]" : "") + " — " + norm(r.name) + " (в накладной: " + (r.unit || "шт") + ")"; }).join("\n");
+    return "Ты помогаешь приёмщику на складе. На фото — паллета (или её часть) с коробками и упаковками напитков и продуктов.\n" +
+      "Список товаров из накладной (артикул [штрихкод] — название):\n" + list + "\n\n" +
+      (codes && codes.length ? "Сканер уже считал на этом фото штрихкоды: " + codes.join(", ") + ".\n" : "") +
+      "Задача: для каждого товара из списка, который ты видишь на фото, определи артикул и посчитай ОТДЕЛЬНО: boxes — картонные коробки/лотки; packs — упаковки в плёнке/стяжке (блоки по несколько бутылок или банок, без коробки); pieces — отдельные штуки россыпью.\n" +
       "Правила:\n" +
-      "1) Сопоставляй по бренду, вкусу, объёму, газ/н/газ, типу тары (пэт, ж/б, ст/б). Если позиции в списке отличаются только газ/н/газ или объёмом и на фото это не разобрать, не угадывай: confidence \"low\", а возможные артикулы перечисли в alt.\n" +
-      "2) Считай только реально видимые коробки. Скрытые и сомнительные не додумывай. Если коробок одного товара видно с разных сторон на одном фото, считай каждую один раз.\n" +
-      "3) Если на коробке напечатано число штук в ней (например x12, 24 шт), верни его в pack_size, иначе null.\n" +
-      "4) Коробки, которых нет в списке, верни в extra с коротким описанием.\n" +
-      "5) Не указывай товары, которых на фото нет.\n" +
-      "6) Для каждого товара (и для каждого элемента extra) верни boxes_2d: список прямоугольников [ymin, xmin, ymax, xmax] в координатах 0-1000 относительно всего фото (0,0 — левый верхний угол). Один прямоугольник плотно охватывает видимые коробки этого товара в одном месте (штабель, ряд). Если товар виден в нескольких местах, дай несколько прямоугольников. Рамки должны точно лежать на самих коробках, а не рядом.\n" +
-      'Ответ ТОЛЬКО JSON: {"items":[{"art":"артикул из списка","boxes":число,"confidence":"high|medium|low","pack_size":число или null,"alt":["артикул"],"note":"коротко или пустая строка","boxes_2d":[[ymin,xmin,ymax,xmax]]}],"extra":[{"description":"что это","boxes":число,"boxes_2d":[[ymin,xmin,ymax,xmax]]}]}';
+      "1) Сопоставляй по штрихкоду (если цифры читаются), затем по бренду, вкусу, объёму, газ/н/газ, типу тары (пэт, ж/б, ст/б). Если позиции отличаются только газ/н/газ или объёмом и на фото это не разобрать, не угадывай: confidence \"low\", возможные артикулы перечисли в alt.\n" +
+      "2) Считай только реально видимое. Скрытое и сомнительное не додумывай. Каждую коробку и упаковку считай один раз.\n" +
+      "3) Читай МЕЛКИЙ текст на коробках, плёнке и этикетках: «ШТ», «шт/кор», «x6», «6 шт», «24 шт в коробе». pack_size — штук в коробке, pack_inner — штук в одной упаковке, иначе null. barcode — цифры штрихкода, если читаются, иначе пустая строка.\n" +
+      "4) Если в накладной единица «уп», считай упаковки особенно аккуратно; если «кор» — коробки.\n" +
+      "5) Товары не из списка верни в extra с коротким описанием. Не указывай товары, которых на фото нет.\n" +
+      "6) Для каждого товара (и элемента extra) верни boxes_2d: прямоугольники [ymin, xmin, ymax, xmax] в координатах 0-1000 относительно всего фото (0,0 — левый верхний угол), плотно по самим коробкам/упаковкам. Если не умеешь определять координаты, верни пустой список.\n" +
+      'Ответ ТОЛЬКО JSON: {"items":[{"art":"артикул из списка","barcode":"","boxes":число,"packs":число,"pieces":число,"confidence":"high|medium|low","pack_size":число или null,"pack_inner":число или null,"alt":["артикул"],"note":"коротко или пустая строка","boxes_2d":[[ymin,xmin,ymax,xmax]]}],"extra":[{"description":"что это","boxes":число,"boxes_2d":[[ymin,xmin,ymax,xmax]]}]}';
+  }
+  async function scanCodes(file) {
+    try {
+      if (!window.BarcodeDetector) return [];
+      var bmp = await bitmapOf(file), r = await new BarcodeDetector().detect(bmp);
+      if (bmp.close) bmp.close();
+      var seen = {}; return r.map(function (x) { return x.rawValue; }).filter(function (v) { if (!v || seen[v]) return false; seen[v] = 1; return true; });
+    } catch (e) { return []; }
   }
 
   // Рамки от Gemini: проверяем и приводим к 0-1000
@@ -569,26 +680,29 @@ details > summary { cursor:pointer; font-weight:600; }
 
   var busyPal = false;
   $("palRead").onclick = async function () {
-    if (busyPal) return; busyPal = true; $("palRead").disabled = true;
+    if (busyPal) return; busyPal = true; stopReq = false; $("palRead").disabled = true;
     var todo = palItems.filter(function (p) { return !p.run && p.file; });
     var done = 0, lastErr = null;
     for (var i = 0; i < todo.length; i++) {
       var p = todo[i];
+      if (stopReq) break;
       setStatus("palStatus", "Смотрю снимок " + (i + 1) + " из " + todo.length + "…");
       try {
-        var blob = await wholeImage(p.file, 2560);
-        var res = await ask([{ text: palPrompt() }, { inline_data: { mime_type: "image/jpeg", data: await blobToB64(blob) } }]);
-        var run = { id: p.id, pal: p.pal || 1, counts: {}, packs: {}, conf: {}, notes: {}, rects: {}, extra: [] };
+        var blob = await wholeImage(p.file, aiMode === "light" ? 1600 : 2560);
+        var MR = M();
+        var res = await ask([{ text: palPrompt(await scanCodes(p.file)) }, { inline_data: { mime_type: "image/jpeg", data: await blobToB64(blob) } }]);
+        var run = { id: p.id, pal: p.pal || 1, counts: {}, pk: {}, pcs: {}, sizes: {}, psz: {}, conf: {}, notes: {}, rects: {}, extra: [] };
         var items = (res && res.items) || [];
         items.forEach(function (it) {
-          var art = norm(it.art);
-          var row = S.rows.find(function (r) { return key(r) === art || norm(r.art) === art; });
-          if (!row) { run.extra.push({ description: "Артикул " + art + " (нет в накладной)" + (it.note ? ": " + it.note : ""), boxes: Number(it.boxes) || 0, rects: cleanRects(it.boxes_2d) }); return; }
-          var k = key(row), b = Math.max(0, Number(it.boxes) || 0);
-          run.counts[k] = (run.counts[k] || 0) + b;
+          var art = norm(it.art), bcd = String(it.barcode || "").replace(/\D/g, "");
+          var row = MR.find(function (r) { return key(r) === art || norm(r.art) === art || (bcd.length >= 8 && String(r.bc || "").replace(/\D/g, "") === bcd); });
+          if (!row) { run.extra.push({ description: "Артикул " + (art || bcd || "?") + " (нет в накладной)" + (it.note ? ": " + it.note : ""), boxes: (Number(it.boxes) || 0) + (Number(it.packs) || 0), rects: cleanRects(it.boxes_2d) }); return; }
+          var k = key(row), b = Math.max(0, Number(it.boxes) || 0), pk = Math.max(0, Number(it.packs) || 0), ps = Math.max(0, Number(it.pieces) || 0);
+          run.counts[k] = (run.counts[k] || 0) + b; run.pk[k] = (run.pk[k] || 0) + pk; run.pcs[k] = (run.pcs[k] || 0) + ps;
           var rc = cleanRects(it.boxes_2d);
-          if (rc.length && b > 0) run.rects[k] = (run.rects[k] || []).concat(rc);
-          if (it.pack_size) run.packs[k] = Number(it.pack_size);
+          if (rc.length && b + pk + ps > 0) run.rects[k] = (run.rects[k] || []).concat(rc);
+          if (it.pack_size) run.sizes[k] = Number(it.pack_size);
+          if (it.pack_inner) run.psz[k] = Number(it.pack_inner);
           var cf = /^(high|medium|low)$/.test(it.confidence) ? it.confidence : "medium";
           var rank = { low: 0, medium: 1, high: 2 };
           if (run.conf[k] == null || rank[cf] < rank[run.conf[k]]) run.conf[k] = cf;
@@ -599,11 +713,11 @@ details > summary { cursor:pointer; font-weight:600; }
         (res && res.extra || []).forEach(function (x) { run.extra.push({ description: norm(x.description) || "Неопознанный товар", boxes: Number(x.boxes) || 0, rects: cleanRects(x.boxes_2d) }); });
         // Фиолетовая позиция нашлась на новом снимке: снимаем метку и убираем её старый счёт
         // с удалённого снимка (иначе при пересъёмке коробки посчитались бы дважды).
-        Object.keys(run.counts).forEach(function (k) {
-          if (run.counts[k] > 0 && S.lost[k]) {
+        Object.keys(Object.assign({}, run.counts, run.pk, run.pcs)).forEach(function (k) {
+          if ((run.counts[k] || 0) + (run.pk[k] || 0) + (run.pcs[k] || 0) > 0 && S.lost[k]) {
             delete S.lost[k];
             (S.ghost || []).forEach(function (g) {
-              ["counts", "packs", "conf", "notes", "rects"].forEach(function (f) { if (g[f]) delete g[f][k]; });
+              ["counts", "pk", "pcs", "sizes", "packs", "psz", "conf", "notes", "rects"].forEach(function (f) { if (g[f]) delete g[f][k]; });
             });
           }
         });
@@ -630,25 +744,48 @@ details > summary { cursor:pointer; font-weight:600; }
   var ICON = { ok: "✅", warn: "⚠️", bad: "❌", miss: "🟪", none: "⬜" };
 
   function allRuns() { return S.runs.concat(S.ghost || []); }
+  function inRun(run, k) { return [run.counts, run.pk, run.pcs].some(function (m) { return m && m[k] != null; }); }
+  // Позиции накладных, объединённые по артикулу (одна позиция может быть в нескольких накладных)
+  function M() {
+    var g = {}, o = [];
+    S.rows.forEach(function (r) {
+      var k = key(r); if (!k) return;
+      var m = g[k];
+      if (!m) { m = g[k] = { art: r.art, name: r.name, bc: r.bc || "", qty: null, unit: r.unit || "", docs: [] }; o.push(m); }
+      if (r.qty != null) m.qty = (m.qty || 0) + r.qty;
+      if (!m.bc && r.bc) m.bc = r.bc; if (!m.unit && r.unit) m.unit = r.unit;
+      if (r.doc && m.docs.indexOf(r.doc) < 0) m.docs.push(r.doc);
+    });
+    return o;
+  }
+  function unitOf(r) { var u = String(r.unit || "").toLowerCase().trim(); if (/^уп/.test(u)) return "уп"; if (/^(кор|ящ|бл)/.test(u)) return "кор"; return "шт"; }
+  function vis(c) {
+    var a = [];
+    if (c.boxes) a.push(c.boxes + " кор"); if (c.packs) a.push(c.packs + " уп"); if (c.pcs) a.push(c.pcs + " шт");
+    return a.join(" + ") || "0";
+  }
 
   function calc(r) {
-    var k = key(r), boxes = 0, seen = false, parts = [], conf = null, notes = [], pack = null, byPal = {};
+    var k = key(r), boxes = 0, packs = 0, pcs = 0, seen = false, parts = [], conf = null, notes = [], pack = null, ppack = null, byPal = {};
     var rank = { low: 0, medium: 1, high: 2 };
-    allRuns().forEach(function (run, i) {
-      if (run.counts[k] != null) {
-        seen = true; boxes += run.counts[k]; parts.push(run.counts[k]); byPal[run.pal || 1] = (byPal[run.pal || 1] || 0) + run.counts[k];
+    allRuns().forEach(function (run) {
+      if (inRun(run, k)) {
+        var b = (run.counts && run.counts[k]) || 0;
+        seen = true; boxes += b; packs += (run.pk && run.pk[k]) || 0; pcs += (run.pcs && run.pcs[k]) || 0;
+        parts.push(b); byPal[run.pal || 1] = (byPal[run.pal || 1] || 0) + b;
         if (run.conf[k] && (conf == null || rank[run.conf[k]] < rank[conf])) conf = run.conf[k];
         if (run.notes[k]) notes.push(run.notes[k]);
-        if (run.packs[k]) pack = run.packs[k];
+        var sz = (run.sizes || run.packs || {})[k]; if (sz) pack = sz;
+        if (run.psz && run.psz[k]) ppack = run.psz[k];
       } else parts.push(0);
     });
-    return { byPal: byPal, boxes: boxes, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack };
+    return { byPal: byPal, boxes: boxes, packs: packs, pcs: pcs, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack, ppack: ppack };
   }
 
   function evaluate(r) {
-    var k = key(r), c = calc(r), qty = r.qty, pb = Number(S.perBox[k]) || 0;
+    var k = key(r), c = calc(r), qty = r.qty, u = unitOf(r), pb = Number(S.perBox[k]) || 0, pp = Number(S.perPack[k]) || 0;
     var manual = S.manual[k];
-    var out = { c: c, pb: pb, status: "warn", msg: "", fact: null };
+    var out = { c: c, pb: pb, pp: pp, u: u, status: "warn", msg: "", fact: null };
     if (manual != null && manual !== "") {
       out.fact = Number(manual);
       if (qty == null) { out.status = "warn"; out.msg = "Факт вручную: " + out.fact + ". В накладной количество не указано."; }
@@ -657,29 +794,37 @@ details > summary { cursor:pointer; font-weight:600; }
       return out;
     }
     if (S.lost[k]) { out.status = "miss"; out.msg = "Была найдена на удалённом снимке. Посчитай вручную или сними заново и нажми «Проверить палету»: если позиция найдётся, статус станет обычным."; return out; }
-    if (!allRuns().length) { out.status = "none"; out.msg = "Нет ни на одном фото. Посчитай вручную."; return out; }
-    if (!c.seen || c.boxes === 0) { out.status = "none"; out.msg = "Нет ни на одном фото. Посчитай вручную."; return out; }
-    if (!pb) {
-      out.status = "warn";
-      if (qty != null && qty > 0 && qty % c.boxes === 0) {
+    if (!allRuns().length || !c.seen || c.boxes + c.packs + c.pcs === 0) { out.status = "none"; out.msg = "Нет ни на одном фото. Посчитай вручную."; return out; }
+    // Считаем в той единице, что указана в накладной: кор / уп / шт
+    var f = 0, need = "";
+    if (u === "кор") f = c.boxes;
+    else if (u === "уп") {
+      f = c.packs;
+      if (c.boxes) { if (pb && pp) f += c.boxes * pb / pp; else need = "box"; }
+      if (c.pcs) { if (pp) f += c.pcs / pp; else need = need || "pack"; }
+    } else {
+      f = c.pcs;
+      if (c.boxes) { if (pb) f += c.boxes * pb; else need = "box"; }
+      if (c.packs) { if (pp) f += c.packs * pp; else need = need || "pack"; }
+    }
+    var see = "Видно: " + vis(c) + ", в накладной " + (qty == null ? "?" : qty) + " " + u + ". ";
+    if (need) {
+      if (need === "box" && u === "шт" && !c.packs && !c.pcs && qty != null && qty > 0 && qty % c.boxes === 0) {
         out.suggest = qty / c.boxes;
-        out.msg = "Видно коробок: " + c.boxes + ", в накладной " + qty + " шт. Получается " + out.suggest + " шт в коробке (" + qty + " ÷ " + c.boxes + "). Верно?" +
-          (c.pack && c.pack !== out.suggest ? " Но на коробке нейросеть прочитала " + c.pack + ", проверь." : "");
-      } else if (qty != null && qty > 0) {
-        out.msg = "Видно коробок: " + c.boxes + ", в накладной " + qty + " шт. " + qty + " не делится на " + c.boxes + " поровну: возможно, часть коробок не видна. Укажи штук в коробке сам" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + ".";
-      } else {
-        out.msg = "Видно коробок: " + c.boxes + ". Укажи, сколько штук в коробке" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + ".";
-      }
+        out.msg = see + "Получается " + out.suggest + " шт в коробке (" + qty + " ÷ " + c.boxes + "). Верно?" + (c.pack && c.pack !== out.suggest ? " Но на коробке нейросеть прочитала " + c.pack + ", проверь." : "");
+      } else if (need === "box") {
+        out.msg = see + "Укажи, сколько штук в коробке" + (c.pack ? " (на коробке похоже на " + c.pack + ")" : "") + (u === "шт" && qty > 0 && c.boxes && qty % c.boxes ? ". " + qty + " не делится на " + c.boxes + " поровну: возможно, часть коробок не видна" : "") + ".";
+      } else out.msg = see + "Укажи, сколько штук в упаковке" + (c.ppack ? " (на упаковке похоже на " + c.ppack + ")" : "") + ".";
       return out;
     }
-    out.fact = c.boxes * pb;
-    if (qty == null) { out.msg = "По фото " + out.fact + " шт, а в накладной количество не указано."; return out; }
-    var diff = out.fact - qty;
+    f = Math.round(f * 100) / 100; out.fact = f;
+    if (qty == null) { out.msg = "По фото " + f + " " + u + ", а в накладной количество не указано."; return out; }
+    var diff = Math.round((f - qty) * 100) / 100;
     if (diff === 0) {
       if (c.conf === "low") { out.status = "warn"; out.msg = "Число совпало, но нейросеть не уверена, что это именно этот товар."; }
-      else { out.status = "ok"; out.msg = "Сходится: " + out.fact + " шт."; }
-    } else if (diff < 0) { out.msg = "По фото " + out.fact + " из " + qty + ". Часть коробок могла быть не видна, проверь вручную."; }
-    else { out.msg = "По фото " + out.fact + ", больше накладной " + qty + " (+" + diff + "). Возможно, коробка посчитана дважды."; }
+      else { out.status = "ok"; out.msg = "Сходится: " + f + " " + u + "."; }
+    } else if (diff < 0) { out.msg = "По фото " + f + " из " + qty + " " + u + ". Часть могла быть не видна, проверь вручную."; }
+    else { out.msg = "По фото " + f + " " + u + ", больше накладной " + qty + " (+" + diff + "). Возможно, посчитано дважды."; }
     if (c.conf === "low") out.msg += " Нейросеть не уверена в товаре.";
     return out;
   }
@@ -688,22 +833,23 @@ details > summary { cursor:pointer; font-weight:600; }
     var box = $("items"), pills = $("pills"), ex = $("extras");
     box.textContent = ""; pills.textContent = ""; ex.textContent = "";
     if (!S.rows.length) { box.appendChild(el("div", "empty", "Сначала загрузи накладную.")); return; }
-    var cnt = { ok: 0, warn: 0, bad: 0, miss: 0, none: 0 };
-    var evals = S.rows.map(function (r) { var e = evaluate(r); cnt[e.status]++; return e; });
+    var cnt = { ok: 0, warn: 0, bad: 0, miss: 0, none: 0 }, MRS = M();
+    var evals = MRS.map(function (r) { var e = evaluate(r); cnt[e.status]++; return e; });
     function pill(t) { pills.appendChild(el("span", "pill", t)); }
-    pill("Позиций: " + S.rows.length);
+    pill("Позиций: " + MRS.length);
     pill("✅ " + cnt.ok); pill("⚠️ " + cnt.warn); pill("❌ " + cnt.bad); pill("🟪 " + cnt.miss); pill("⬜ " + cnt.none);
     var at = cnt.warn + cnt.bad + cnt.miss + cnt.none;
     pills.insertBefore(el("span", "pill attn", at ? "Требуют проверки: " + at : "Всё сходится ✅"), pills.firstChild);
 
-    S.rows.forEach(function (r, i) {
+    MRS.forEach(function (r, i) {
       var e = evals[i];
       if (onlyIssues && e.status === "ok") return;
       var k = key(r);
       var d = el("div", "item " + e.status);
       d.appendChild(el("div", "t", ICON[e.status] + " " + (r.name || "(без названия)")));
-      d.appendChild(el("div", "m", "арт. " + (r.art || "—") + " · в накладной: " + (r.qty == null ? "?" : r.qty) + " шт" +
-        (allRuns().length ? " · видно коробок: " + e.c.boxes + palStr(e.c) : "")));
+      d.appendChild(el("div", "m", "арт. " + (r.art || "—") + (r.bc ? " · ШК " + r.bc : "") + " · в накладной: " + (r.qty == null ? "?" : r.qty) + " " + e.u +
+        (r.docs.length ? " · накл. " + r.docs.join(", ") : "") +
+        (allRuns().length ? " · видно: " + vis(e.c) + palStr(e.c) : "")));
       d.appendChild(el("div", "msg", e.msg));
       if (e.suggest) {
         var yes = el("button", "btn small primary", "Да, " + e.suggest + " шт в коробке");
@@ -728,13 +874,18 @@ details > summary { cursor:pointer; font-weight:600; }
       pbIn.value = S.perBox[k] || ""; if (e.c.pack) pbIn.placeholder = String(e.c.pack);
       pbIn.onchange = function () { if (pbIn.value === "") delete S.perBox[k]; else S.perBox[k] = Number(pbIn.value); saveState(); renderAll(); };
       d1.appendChild(pbIn);
+      var d3 = el("div"); d3.appendChild(el("label", null, "Штук в упаковке"));
+      var ppIn = el("input"); ppIn.type = "number"; ppIn.min = "1"; ppIn.setAttribute("inputmode", "numeric");
+      ppIn.value = S.perPack[k] || ""; if (e.c.ppack) ppIn.placeholder = String(e.c.ppack);
+      ppIn.onchange = function () { if (ppIn.value === "") delete S.perPack[k]; else S.perPack[k] = Number(ppIn.value); saveState(); renderAll(); };
+      d3.appendChild(ppIn);
       var d2 = el("div"); d2.appendChild(el("label", null, "Факт вручную, шт"));
       var mIn = el("input"); mIn.type = "number"; mIn.min = "0"; mIn.setAttribute("inputmode", "numeric");
       mIn.value = S.manual[k] != null ? S.manual[k] : "";
       if (e.fact != null && S.manual[k] == null) mIn.placeholder = String(e.fact);
       mIn.onchange = function () { if (mIn.value === "") delete S.manual[k]; else S.manual[k] = Number(mIn.value); saveState(); renderAll(); };
       d2.appendChild(mIn);
-      ctl.appendChild(d1); ctl.appendChild(d2); d.appendChild(ctl);
+      ctl.appendChild(d1); ctl.appendChild(d3); ctl.appendChild(d2); d.appendChild(ctl);
       box.appendChild(d);
     });
     if (!box.children.length) box.appendChild(el("div", "empty", "Спорных позиций нет 🎉"));
@@ -779,7 +930,7 @@ details > summary { cursor:pointer; font-weight:600; }
     return out;
   }
   function artLabel(k) {
-    var r = S.rows.find(function (x) { return key(x) === k; });
+    var r = M().find(function (x) { return key(x) === k; });
     return r && r.art ? String(r.art) : String(k).slice(0, 14);
   }
   // Все найденные позиции на одном снимке (по нажатию на миниатюру)
@@ -832,11 +983,11 @@ details > summary { cursor:pointer; font-weight:600; }
   function cell(v) { v = String(v == null ? "" : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   $("btnCsv").onclick = function () {
     if (!S.rows.length) return;
-    var L = ["Артикул;Наименование;По накладной;Видно коробок;Штук в коробке;Факт;Статус;Комментарий"];
+    var L = ["Накладная;Артикул;Штрихкод;Наименование;По накладной;Ед.;Видно коробок;Видно упаковок;Видно штук;Штук в коробке;Штук в упаковке;Факт;Статус;Комментарий"];
     var names = { ok: "совпало", warn: "проверить", bad: "расхождение", miss: "снимок удалён", none: "нет на фото" };
-    S.rows.forEach(function (r) {
+    M().forEach(function (r) {
       var e = evaluate(r), k = key(r);
-      L.push([r.art, r.name, r.qty, e.c.boxes, S.perBox[k] || "", e.fact == null ? "" : e.fact, names[e.status], e.msg].map(cell).join(";"));
+      L.push([r.docs.join(", "), r.art, r.bc, r.name, r.qty, e.u, e.c.boxes, e.c.packs, e.c.pcs, S.perBox[k] || "", S.perPack[k] || "", e.fact == null ? "" : e.fact, names[e.status], e.msg].map(cell).join(";"));
     });
     var blob = new Blob(["\uFEFF" + L.join("\r\n")], { type: "text/csv;charset=utf-8" });
     var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "priemka.csv";
@@ -962,9 +1113,9 @@ details > summary { cursor:pointer; font-weight:600; }
     var t = prompt("Название приёмки (например, номер накладной):", new Date().toLocaleString("ru-RU"));
     if (t === null) return;
     var c = { ok: 0, warn: 0, bad: 0, miss: 0, none: 0 };
-    S.rows.forEach(function (r) { c[evaluate(r).status]++; });
+    M().forEach(function (r) { c[evaluate(r).status]++; });
     var h = hist();
-    h.unshift({ id: Date.now(), ts: Date.now(), title: t || "Без названия", rows: S.rows, perBox: S.perBox, manual: S.manual, runs: S.runs, lost: S.lost, ghost: S.ghost, c: c });
+    h.unshift({ id: Date.now(), ts: Date.now(), title: t || "Без названия", rows: S.rows, perBox: S.perBox, perPack: S.perPack, manual: S.manual, runs: S.runs, lost: S.lost, ghost: S.ghost, c: c });
     try { localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 50))); }
     catch (e) { alert("Не хватило места для истории. Удали старые записи и попробуй снова."); return; }
     S.rows = []; S.manual = {}; S.runs = []; S.lost = {}; S.ghost = []; palItems = []; invPhotos = [];
@@ -976,7 +1127,7 @@ details > summary { cursor:pointer; font-weight:600; }
     var e = hist().find(function (x) { return x.id === id; });
     if (!e) return;
     if (S.rows.length && !confirm("Текущая приёмка на экране будет заменена. Продолжить?")) return;
-    S.rows = e.rows; S.manual = e.manual || {}; S.runs = e.runs || []; S.lost = e.lost || {}; S.ghost = e.ghost || []; Object.assign(S.perBox, e.perBox || {});
+    S.rows = e.rows; S.manual = e.manual || {}; S.runs = e.runs || []; S.lost = e.lost || {}; S.ghost = e.ghost || []; Object.assign(S.perBox, e.perBox || {}); Object.assign(S.perPack, e.perPack || {});
     palItems = S.runs.map(function (r) { return { id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }; });
     saveState(); renderInv(); renderPalThumbs(); renderAll(); window.scrollTo(0, 0);
   }
@@ -1004,9 +1155,9 @@ details > summary { cursor:pointer; font-weight:600; }
   // ---------- акт расхождений ----------
   function actText() {
     var sh = [], ov = [], ms = [], nc = [], ex = [];
-    S.rows.forEach(function (r) {
+    M().forEach(function (r) {
       var e = evaluate(r), k = key(r), q = r.qty, man = S.manual[k] != null;
-      var nm = (r.name || "(без названия)") + (r.art ? " [арт. " + r.art + "]" : "");
+      var nm = (r.name || "(без названия)") + (r.art ? " [арт. " + r.art + "]" : "") + (r.docs.length ? " (накл. " + r.docs.join(", ") + ")" : "");
       var qs = q == null ? "?" : q;
       if (e.status === "miss" || e.status === "none") ms.push("- " + nm + ": по накладной " + qs + " шт, на фото не найдено");
       else if (e.fact != null && q != null && e.fact < q) sh.push("- " + nm + ": по накладной " + q + ", фактически " + e.fact + " (-" + (q - e.fact) + ")" + (man ? "" : " — по фото, не подтверждено"));
@@ -1048,7 +1199,7 @@ details > summary { cursor:pointer; font-weight:600; }
       var d = JSON.parse(await f.text());
       if (!d || !d.S || !Array.isArray(d.S.rows)) throw new Error("bad");
       if (!confirm("Текущие данные и история будут заменены копией. Продолжить?")) return;
-      S.rows = d.S.rows; S.perBox = d.S.perBox || {}; S.manual = d.S.manual || {}; S.runs = d.S.runs || []; S.lost = d.S.lost || {}; S.ghost = d.S.ghost || [];
+      S.rows = d.S.rows; S.perBox = d.S.perBox || {}; S.perPack = d.S.perPack || {}; S.manual = d.S.manual || {}; S.runs = d.S.runs || []; S.lost = d.S.lost || {}; S.ghost = d.S.ghost || [];
       palItems = S.runs.map(function (r) { return { id: r.id, url: null, file: null, run: r, pal: r.pal || 1 }; });
       try { localStorage.setItem(LS_HIST, JSON.stringify(d.hist || [])); } catch (e) {}
       saveState(); renderInv(); renderPalThumbs(); renderPalSel(); renderAll(); renderHistory();
@@ -1058,8 +1209,8 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- старт ----------
   loadState();
-  $("apiKey").value = apiKey; $("model").value = model;
-  if (!apiKey) $("settings").open = true;
+  $("apiKey").value = apiKey; $("model").value = model; $("groqKey").value = groqKey; $("lightModel").value = lightModel; $("aiMode").value = aiMode;
+  if (!apiKey && !groqKey) $("settings").open = true;
   renderInv(); renderInvThumbs(); renderPalThumbs(); renderAll(); refreshButtons(); renderHistory(); renderPalSel();
   $("apiKey").oninput = function () { /* ключ применяется по кнопке «Сохранить и проверить» */ };
 })();
