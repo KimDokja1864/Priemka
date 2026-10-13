@@ -121,6 +121,13 @@ details > summary { cursor:pointer; font-weight:600; }
 /* ---- сворачиваемые группы ---- */
 .thumbs{padding-left:6px}
 .thumbs button.mv{right:auto;left:-6px}
+.thumbs button.rt{right:auto;left:-6px;top:auto;bottom:16px}
+.crops{display:flex;gap:8px;overflow-x:auto;margin-top:8px}
+.crops figure{margin:0;flex:0 0 auto;max-width:200px}
+.crops canvas{display:block;height:96px;max-width:200px;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:#000}
+.crops figcaption{font-size:11px;color:var(--muted);margin-top:2px;word-break:break-word}
+.item .seen{font-size:13px;margin-top:4px}
+.item .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .grp{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--card);overflow:hidden}
 .grp>summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;gap:6px 8px;align-items:center;flex-wrap:wrap;font-weight:600;-webkit-tap-highlight-color:transparent}
 .grp>summary::-webkit-details-marker{display:none}
@@ -277,7 +284,7 @@ details > summary { cursor:pointer; font-weight:600; }
   <div id="vBot"><button class="btn" id="vPrev">◀</button><div id="vCap"></div><button class="btn" id="vNext">▶</button></div>
 </div>
 <div id="cam"><video id="camVideo" playsinline muted autoplay></video><div id="camFlash"></div>
-  <div id="camTools"><button class="btn" id="camLens">🔄 Объектив</button><label id="camZoomBox">🔍 <input type="range" id="camZoom"><span id="camZoomV" style="min-width:36px"></span></label></div>
+  <div id="camTools"><button class="btn" id="camTorch" style="display:none">🔦 Свет</button><button class="btn" id="camLens">🔄 Объектив</button><label id="camZoomBox">🔍 <input type="range" id="camZoom"><span id="camZoomV" style="min-width:36px"></span></label></div>
   <div class="camBar"><span id="camN">Снято: 0</span><button id="camShot" aria-label="Снять"></button><button class="btn" id="camDone">Готово</button></div></div>
 
 <script>
@@ -578,7 +585,7 @@ details > summary { cursor:pointer; font-weight:600; }
       p.th = u; if (p.onth) p.onth(u);
     });
   }
-  function thumbsFor(container, list, removeFn, label, openFn, moveFn, numFn) {
+  function thumbsFor(container, list, removeFn, label, openFn, moveFn, numFn, rotFn) {
     container.textContent = "";
     list.forEach(function (p, i) {
       var f = el("figure"), num = numFn ? numFn(p, i) : i + 1;
@@ -595,6 +602,7 @@ details > summary { cursor:pointer; font-weight:600; }
       b.onclick = function () { removeFn(i, p); };
       f.appendChild(b);
       if (moveFn) { var mv = el("button", "mv", "↪"); mv.setAttribute("aria-label", "Перенести в другую накладную или палету"); mv.onclick = function () { moveFn(i, p); }; f.appendChild(mv); }
+      if (rotFn && p.url && !p.run) { var rt = el("button", "rt", "↻"); rt.setAttribute("aria-label", "Повернуть на 90°"); rt.onclick = function () { rotFn(p); }; f.appendChild(rt); }
       container.appendChild(f);
     });
   }
@@ -958,7 +966,8 @@ details > summary { cursor:pointer; font-weight:600; }
             thumbsFor(th, list, onRemovePal, "Снимок",
               function (i, p) { openPalViewer(palItems.indexOf(p)); },
               function (i, p) { openAssign([p], "Перенести снимок"); },
-              function (p) { return palItems.indexOf(p) + 1; });
+              function (p) { return palItems.indexOf(p) + 1; },
+              function (p) { rotatePal(p); });
           }, false));
         });
       }, d === ""));
@@ -975,13 +984,15 @@ details > summary { cursor:pointer; font-weight:600; }
       codeHint(codes, scope) +
       "Задача: для каждого товара из списка, который ты видишь на фото, определи артикул и посчитай ОТДЕЛЬНО: boxes — картонные коробки/лотки; packs — упаковки в плёнке/стяжке (блоки по несколько бутылок или банок, без коробки); pieces — отдельные штуки россыпью.\n" +
       "Правила:\n" +
-      "1) Сопоставляй по штрихкоду (если цифры читаются), затем по бренду, вкусу, объёму, газ/н/газ, типу тары (пэт, ж/б, ст/б). Если позиции отличаются только газ/н/газ или объёмом и на фото это не разобрать, не угадывай: confidence \"low\", возможные артикулы перечисли в alt.\n" +
+      "0) Фото может быть повёрнуто на 90° или 180°, бутылки могут лежать, текст может идти вертикально: мысленно поверни снимок и читай этикетки. Фото может быть тёмным: читай внимательно.\n" +
+      "1) Сначала ПРОЧИТАЙ этикетку и запиши в поле seen дословно, что на ней написано: бренд и тип продукта (сок, нектар, молоко, кефир, вода, лимонад и т.д.), объём. Только потом сопоставляй с накладной. Тип продукта должен совпадать: молоко или кефир не бывает соком, вода не бывает лимонадом. Если тип или бренд не совпадает ни с одной позицией, это extra, а не ближайший по форме бутылки товар. Если надпись не читается, seen пустая, confidence \"low\".\n" +
+      "1a) Сопоставляй по штрихкоду (если цифры читаются), затем по бренду, вкусу, объёму, газ/н/газ, типу тары (пэт, ж/б, ст/б). Если позиции отличаются только газ/н/газ или объёмом и на фото это не разобрать, не угадывай: confidence \"low\", возможные артикулы перечисли в alt.\n" +
       "2) Считай только реально видимое. Скрытое и сомнительное не додумывай. Каждую коробку и упаковку считай один раз.\n" +
       "3) Читай МЕЛКИЙ текст на коробках, плёнке и этикетках: «ШТ», «шт/кор», «x6», «6 шт», «24 шт в коробе». pack_size — штук в коробке, pack_inner — штук в одной упаковке, иначе null. barcode — цифры штрихкода, если читаются, иначе пустая строка.\n" +
       "4) Если в накладной единица «уп», считай упаковки особенно аккуратно; если «кор» — коробки.\n" +
       "5) Товары не из списка верни в extra с коротким описанием. Не указывай товары, которых на фото нет.\n" +
       "6) Для каждого товара (и элемента extra) верни boxes_2d: прямоугольники [ymin, xmin, ymax, xmax] в координатах 0-1000 относительно всего фото (0,0 — левый верхний угол), плотно по самим коробкам/упаковкам. Если не умеешь определять координаты, верни пустой список.\n" +
-      'Ответ ТОЛЬКО JSON: {"items":[{"art":"артикул из списка","barcode":"","boxes":число,"packs":число,"pieces":число,"confidence":"high|medium|low","pack_size":число или null,"pack_inner":число или null,"alt":["артикул"],"note":"коротко или пустая строка","boxes_2d":[[ymin,xmin,ymax,xmax]]}],"extra":[{"description":"что это","boxes":число,"boxes_2d":[[ymin,xmin,ymax,xmax]]}]}';
+      'Ответ ТОЛЬКО JSON: {"items":[{"art":"артикул из списка","seen":"дословно: бренд, тип продукта, объём","barcode":"","boxes":число,"packs":число,"pieces":число,"confidence":"high|medium|low","pack_size":число или null,"pack_inner":число или null,"alt":["артикул"],"note":"коротко или пустая строка","boxes_2d":[[ymin,xmin,ymax,xmax]]}],"extra":[{"description":"что это (бренд, тип, что написано на этикетке)","boxes":число,"boxes_2d":[[ymin,xmin,ymax,xmax]]}]}';
   }
   function codeHint(codes, scope) {
     if (!codes || !codes.length) return "";
@@ -1037,6 +1048,40 @@ details > summary { cursor:pointer; font-weight:600; }
   }
 
   var busyPal = false;
+
+  // Проверка: совпадает ли прочитанное на этикетке с позицией накладной
+  var TYPE_GROUPS = [["сок", "нектар", "морс"], ["молок"], ["кефир", "ряженк", "простокваш"], ["йогурт"], ["вод"], ["лимонад", "газировк"], ["пив"], ["чай"], ["квас"], ["энергет"], ["сметан"], ["масл"]];
+  function typesOf(t) {
+    t = String(t || "").toLowerCase(); var o = [];
+    TYPE_GROUPS.forEach(function (g, i) { if (g.some(function (w) { return new RegExp("(^|[^а-яёa-z])" + w).test(t); })) o.push(i); });
+    return o;
+  }
+  function stems(t) {
+    return String(t || "").toLowerCase().replace(/[^а-яёa-z0-9\s]/g, " ").split(/\s+/).filter(function (w) { return w.length >= 4 && !/^\d+$/.test(w); }).map(function (w) { return w.slice(0, 4); });
+  }
+  function sanity(row, seenTxt) {
+    if (!seenTxt) return { weak: true, reason: "Нейросеть не показала, что прочитала на этикетке." };
+    var ts = typesOf(seenTxt), tn = typesOf(row.name);
+    if (ts.length && tn.length && !ts.some(function (x) { return tn.indexOf(x) >= 0; })) return { conflict: true };
+    var a = stems(seenTxt), b = stems(row.name);
+    if (a.length && b.length && !a.some(function (x) { return b.indexOf(x) >= 0; })) return { weak: true, reason: "Название на этикетке («" + seenTxt + "») не похоже на название в накладной." };
+    return null;
+  }
+  function rotatePal(p) {
+    if (p.run) { setStatus("palStatus", "Снимок уже проверен. Удали его (✕) и добавь заново, если нужно повернуть.", true); return; }
+    bitmapOf(p.file).then(function (bmp) {
+      var c = document.createElement("canvas"); c.width = bmp.height; c.height = bmp.width;
+      var x = c.getContext("2d"); x.translate(c.width, 0); x.rotate(Math.PI / 2); x.drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      return new Promise(function (res) { c.toBlob(res, "image/jpeg", 0.92); });
+    }).then(function (bl) {
+      if (!bl) return;
+      try { URL.revokeObjectURL(p.url); if (p.th && p.th !== p.url) URL.revokeObjectURL(p.th); } catch (e) {}
+      p.file = new File([bl], "rot.jpg", { type: "image/jpeg" }); p.url = URL.createObjectURL(p.file); p.th = null; p.thBusy = false;
+      renderPalThumbs();
+    }).catch(function () { setStatus("palStatus", "Не удалось повернуть снимок.", true); });
+  }
+
   async function runPal(filter) {
     if (busyPal) return;
     if (!aiReady()) { setStatus("palStatus", "Сначала добавь ключ ИИ в настройках.", true); return; }
@@ -1057,7 +1102,7 @@ details > summary { cursor:pointer; font-weight:600; }
         var blob = await wholeImage(p.file, aiMode === "light" ? 1600 : 2560);
         var MR = (p.doc !== "*" && M(p.doc).length) ? M(p.doc) : M();
         var res = await ask([{ text: palPrompt(await scanCodes(p.file), MR) }, { inline_data: { mime_type: "image/jpeg", data: await blobToB64(blob) } }]);
-        var run = { id: p.id, pal: p.pal || 1, doc: p.doc, counts: {}, pk: {}, pcs: {}, sizes: {}, psz: {}, conf: {}, notes: {}, rects: {}, extra: [] };
+        var run = { id: p.id, pal: p.pal || 1, doc: p.doc, counts: {}, pk: {}, pcs: {}, sizes: {}, psz: {}, conf: {}, notes: {}, rects: {}, seen: {}, extra: [] };
         var items = (res && res.items) || [];
         function findRow(list, art, bcd) {
           var row = list.find(function (r) { return (art && (key(r) === art || norm(r.art) === art)) || (bcd.length >= 8 && r.bc && bcMatch(r.bc, bcd)); });
@@ -1073,6 +1118,12 @@ details > summary { cursor:pointer; font-weight:600; }
             run.extra.push({ description: "Артикул " + (art || bcd || "?") + (other || " (нет в накладной)") + (it.note ? ": " + it.note : ""), boxes: (Number(it.boxes) || 0) + (Number(it.packs) || 0), rects: cleanRects(it.boxes_2d) });
             return;
           }
+          var seenTxt = norm(it.seen), viaBc = bcd.length >= 8 && row.bc && bcMatch(row.bc, bcd);
+          var chk = viaBc ? null : sanity(row, seenTxt);
+          if (chk && chk.conflict) {
+            run.extra.push({ description: "На этикетке: «" + seenTxt + "». Это не «" + norm(row.name) + "» (нейросеть ошиблась с артикулом " + (art || "?") + ")", boxes: (Number(it.boxes) || 0) + (Number(it.packs) || 0), rects: cleanRects(it.boxes_2d) });
+            return;
+          }
           var k = key(row), b = Math.max(0, Number(it.boxes) || 0), pk = Math.max(0, Number(it.packs) || 0), ps = Math.max(0, Number(it.pieces) || 0);
           run.counts[k] = (run.counts[k] || 0) + b; run.pk[k] = (run.pk[k] || 0) + pk; run.pcs[k] = (run.pcs[k] || 0) + ps;
           var rc = cleanRects(it.boxes_2d);
@@ -1080,6 +1131,8 @@ details > summary { cursor:pointer; font-weight:600; }
           if (it.pack_size) run.sizes[k] = Number(it.pack_size);
           if (it.pack_inner) run.psz[k] = Number(it.pack_inner);
           var cf = /^(high|medium|low)$/.test(it.confidence) ? it.confidence : "medium";
+          if (chk && chk.weak) { cf = "low"; it.note = (norm(it.note) ? norm(it.note) + " " : "") + chk.reason; }
+          if (seenTxt) run.seen[k] = run.seen[k] ? run.seen[k] + "; " + seenTxt : seenTxt;
           var rank = { low: 0, medium: 1, high: 2 };
           if (run.conf[k] == null || rank[cf] < rank[run.conf[k]]) run.conf[k] = cf;
           var note = norm(it.note);
@@ -1151,7 +1204,7 @@ details > summary { cursor:pointer; font-weight:600; }
   }
 
   function calc(r) {
-    var k = key(r), boxes = 0, packs = 0, pcs = 0, seen = false, parts = [], conf = null, notes = [], pack = null, ppack = null, byPal = {};
+    var k = key(r), boxes = 0, packs = 0, pcs = 0, seen = false, parts = [], conf = null, notes = [], pack = null, ppack = null, byPal = {}, seens = [];
     var rank = { low: 0, medium: 1, high: 2 };
     allRuns().forEach(function (run) {
       if (inRun(run, k) && (r.doc == null || runBelongs(run, r.doc, k))) {
@@ -1160,11 +1213,12 @@ details > summary { cursor:pointer; font-weight:600; }
         parts.push(b); byPal[run.pal || 1] = (byPal[run.pal || 1] || 0) + b;
         if (run.conf[k] && (conf == null || rank[run.conf[k]] < rank[conf])) conf = run.conf[k];
         if (run.notes[k]) notes.push(run.notes[k]);
+        if (run.seen && run.seen[k]) seens.push(run.seen[k]);
         var sz = (run.sizes || run.packs || {})[k]; if (sz) pack = sz;
         if (run.psz && run.psz[k]) ppack = run.psz[k];
       } else parts.push(0);
     });
-    return { byPal: byPal, boxes: boxes, packs: packs, pcs: pcs, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack, ppack: ppack };
+    return { byPal: byPal, boxes: boxes, packs: packs, pcs: pcs, seen: seen, parts: parts, conf: conf, notes: notes, pack: pack, ppack: ppack, seens: seens };
   }
 
   function evaluate(r) {
@@ -1226,6 +1280,20 @@ details > summary { cursor:pointer; font-weight:600; }
     return o.sort(function (a, b) { return a.pal - b.pal; });
   }
 
+  // вырезка из фото по рамке (координаты 0-1000)
+  function cropTo(url, box, cb) {
+    var im = new Image();
+    im.onload = function () {
+      var W = im.naturalWidth, H = im.naturalHeight, pad = 0.06;
+      var y0 = Math.max(0, (box[0] / 1000 - pad) * H), x0 = Math.max(0, (box[1] / 1000 - pad) * W);
+      var y1 = Math.min(H, (box[2] / 1000 + pad) * H), x1 = Math.min(W, (box[3] / 1000 + pad) * W);
+      var w = Math.max(20, x1 - x0), h = Math.max(20, y1 - y0), sc = Math.min(1, 320 / Math.max(w, h) * 1.0, 700 / h);
+      var c = document.createElement("canvas"); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+      c.getContext("2d").drawImage(im, x0, y0, w, h, 0, 0, c.width, c.height);
+      cb(c);
+    };
+    im.src = url;
+  }
   function renderItem(b, r, e) {
     var k = key(r);
     var d = el("div", "item " + e.status);
@@ -1240,7 +1308,25 @@ details > summary { cursor:pointer; font-weight:600; }
       d.appendChild(yes);
     }
     if (e.c.notes.length) d.appendChild(el("div", "m", "Заметка: " + e.c.notes.join(" ")));
+    if (e.c.seens && e.c.seens.length) d.appendChild(el("div", "seen", "👁 ИИ прочитал: «" + e.c.seens.join("; ") + "»"));
     var fr = framesFor(r);
+    if (fr.length) {
+      var cr = el("div", "crops");
+      fr.slice(0, 3).forEach(function (f, fi) {
+        if (!f.rects.length) return;
+        var fg = el("figure");
+        cropTo(f.url, f.rects[0].box, function (cv) { cv.onclick = function () { openViewer(fr, fi, r.name || r.art || ""); }; fg.insertBefore(cv, fg.firstChild); });
+        fg.appendChild(el("figcaption", null, f.caption + (f.rects.length > 1 ? " · рамок: " + f.rects.length : "")));
+        cr.appendChild(fg);
+      });
+      if (cr.children.length) d.appendChild(cr);
+    }
+    if (e.fact != null && e.status !== "ok" && getManual(r) == null) {
+      var acts = el("div", "acts");
+      var acc = el("button", "btn small primary", "✓ Принять по фото: " + e.fact + " " + e.u);
+      acc.onclick = function () { setManual(r, e.fact); saveState(); renderAll(); };
+      acts.appendChild(acc); d.appendChild(acts);
+    }
     if (fr.length) {
       var sh = el("button", "btn small", "🔴 Показать на фото" + (fr.length > 1 ? " (" + fr.length + ")" : ""));
       sh.style.marginTop = "6px";
@@ -1320,6 +1406,8 @@ details > summary { cursor:pointer; font-weight:600; }
         if (q && !dm && (String(r.name || "") + " " + (r.art || "") + " " + (r.bc || "")).toLowerCase().indexOf(q) < 0) return;
         idx.push(i);
       });
+      var ord = { miss: 0, bad: 1, warn: 2, none: 3, ok: 4 };
+      idx.sort(function (x, y) { return (ord[gi.ev[x].status] - ord[gi.ev[y].status]) || (x - y); });
       if (!idx.length) return;
       shown++;
       var c = gi.c, at = c.warn + c.bad + c.miss + c.none, pls = palsOfDoc(d);
@@ -1435,7 +1523,7 @@ details > summary { cursor:pointer; font-weight:600; }
 
   // ---------- своя камера: снимай подряд ----------
   var camStream = null, camTarget = "", camCount = 0, camDevs = [], camIdx = -1, camBusy = false;
-  var LS_CAMDEV = "priemka2_camdev";
+  var LS_CAMDEV = "priemka2_camdev", torchOn = false;
   var CAM_BASE = { width: { ideal: 3840 }, height: { ideal: 2160 } };
   async function startStream(devId) {
     var gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -1462,7 +1550,8 @@ details > summary { cursor:pointer; font-weight:600; }
       var z = (tr.getSettings && tr.getSettings().zoom) || cap.zoom.min;
       zs.value = z; $("camZoomV").textContent = "×" + Number(z).toFixed(1); zb.style.display = "flex";
     } else zb.style.display = "none";
-    $("camTools").style.display = (camDevs.length > 1 || zb.style.display === "flex") ? "flex" : "none";
+    torchOn = false; var tb = $("camTorch"); tb.textContent = "🔦 Свет"; tb.style.display = (cap && cap.torch) ? "" : "none";
+    $("camTools").style.display = (camDevs.length > 1 || zb.style.display === "flex" || tb.style.display === "") ? "flex" : "none";
   }
   async function attachStream(stream) {
     camStream = stream;
@@ -1494,6 +1583,11 @@ details > summary { cursor:pointer; font-weight:600; }
       try { await attachStream(await startStream(lsGet(LS_CAMDEV))); } catch (e2) { closeCam(); }
     }
     camBusy = false;
+  };
+  $("camTorch").onclick = function () {
+    var tr = camStream && camStream.getVideoTracks()[0]; if (!tr) return;
+    torchOn = !torchOn;
+    tr.applyConstraints({ advanced: [{ torch: torchOn }] }).then(function () { $("camTorch").textContent = torchOn ? "🔦 Свет вкл" : "🔦 Свет"; }).catch(function () { torchOn = false; });
   };
   $("camZoom").oninput = function () {
     var tr = camStream && camStream.getVideoTracks()[0], z = Number($("camZoom").value);
