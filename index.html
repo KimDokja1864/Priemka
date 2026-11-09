@@ -51,7 +51,7 @@ h2 { font-size:17px; margin:0 0 8px; }
 .row > .btn { flex:1 1 130px; }
 .thumbs { display:flex; gap:8px; overflow-x:auto; padding:8px 0 2px; }
 .thumbs figure { margin:0; position:relative; flex:0 0 auto; text-align:center; }
-.thumbs img, .thumbs .ph { height:84px; min-width:60px; border-radius:8px; border:1px solid var(--line); display:block; }
+.thumbs img, .thumbs .ph { height:84px; min-width:60px; border-radius:8px; border:1px solid var(--line); display:block; object-fit:cover; }
 .thumbs .ph { display:flex; align-items:center; justify-content:center; padding:0 10px; font-size:13px; color:var(--muted); }
 .thumbs figcaption { font-size:11px; color:var(--muted); }
 .thumbs button { position:absolute; top:-6px; right:-6px; width:26px; height:26px; border-radius:13px;
@@ -118,7 +118,6 @@ details > summary { cursor:pointer; font-weight:600; }
 #vBot .btn{min-height:42px;padding:6px 16px}
 #vCap{font-size:13px;text-align:center;flex:1}
 
-/* ---- сворачиваемые группы ---- */
 .thumbs{padding-left:6px}
 .thumbs button.mv{right:auto;left:-6px}
 .thumbs button.rt{right:auto;left:-6px;top:auto;bottom:16px}
@@ -144,7 +143,6 @@ details > summary { cursor:pointer; font-weight:600; }
 .gtools,.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
 .sm{font-size:12.5px;font-weight:400;color:var(--muted)}
 .sel{font:inherit;color:var(--text);background:var(--input-bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%;min-height:40px}
-/* ---- выбор накладной для снимков ---- */
 #assign{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center}
 #assign .sh{background:var(--card);color:var(--text);width:100%;max-width:760px;max-height:88vh;max-height:88dvh;border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
 #assignList{overflow:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
@@ -158,24 +156,32 @@ details > summary { cursor:pointer; font-weight:600; }
 
   <!-- Настройки -->
   <section class="card">
-    <details id="settings">
+    <details id="settings" open>
       <summary>⚙️ Настройки ИИ</summary>
       <label class="f" for="apiKey">API-ключ из Google AI Studio</label>
       <input id="apiKey" type="password" autocomplete="off" placeholder="AIza...">
       <label class="f" for="model">Модель</label>
       <input id="model" type="text" list="models" placeholder="gemini-2.5-flash" autocapitalize="off" autocorrect="off">
-      <datalist id="models"></datalist>
+      <datalist id="models">
+        <option value="gemini-2.5-flash">
+        <option value="gemini-1.5-flash">
+        <option value="gemini-1.5-pro">
+      </datalist>
       <label class="f" for="aiMode">Какой ИИ использовать</label>
-      <select id="aiMode" style="font:inherit;padding:8px;border-radius:8px;width:100%"><option value="gemini">Gemini (основной)</option><option value="auto">Авто: Gemini, при лимите — лёгкий</option><option value="light">Только лёгкий (бесплатный, Groq)</option></select>
-      <label class="f" for="groqKey">Ключ лёгкого ИИ (Groq, бесплатно: console.groq.com)</label>
+      <select id="aiMode" class="sel">
+        <option value="gemini">Gemini (основной)</option>
+        <option value="auto">Авто: Gemini, при лимите — лёгкий</option>
+        <option value="light">Только лёгкий (Groq)</option>
+      </select>
+      <label class="f" for="groqKey">Ключ лёгкого ИИ (Groq: console.groq.com)</label>
       <input id="groqKey" type="password" autocomplete="off" placeholder="gsk_...">
       <label class="f" for="lightModel">Модель лёгкого ИИ</label>
-      <input id="lightModel" type="text" placeholder="meta-llama/llama-4-scout-17b-16e-instruct" autocapitalize="off" autocorrect="off">
+      <input id="lightModel" type="text" placeholder="llama-3.2-11b-vision-preview" autocapitalize="off" autocorrect="off">
       <div class="row" style="margin-top:10px">
         <button class="btn" id="btnSaveKey">Сохранить и проверить</button>
       </div>
       <div class="status" id="keyStatus"></div>
-      <div class="hint">Ключ хранится только на этом телефоне и отправляется только в Google. Никому его не показывай. Пока пользуешься, обходной путь (VPN) должен быть включён.</div>
+      <div class="hint">Ключ сохраняется локально в браузере (LocalStorage).</div>
     </details>
   </section>
 
@@ -189,18 +195,18 @@ details > summary { cursor:pointer; font-weight:600; }
       <button class="btn" id="invBtnPick">🖼️ Из галереи</button>
     </div>
     <div class="thumbs" id="invThumbs"></div>
-    <input id="invNo" type="text" placeholder="№ накладной (если сам не определится)" style="margin-top:8px">
+    <input id="invNo" type="text" placeholder="№ накладной (если не указан, определится сам)" style="margin-top:8px">
     <button class="btn primary big" id="invRead" disabled style="margin-top:8px">Распознать накладную</button>
     <div class="status" id="invStatus"></div>
-    <input id="invQ" type="text" placeholder="🔍 Найти накладную или товар" style="margin-top:10px">
+    <input id="invQ" type="text" placeholder="🔍 Найти позицию" style="margin-top:10px">
     <div class="row" style="margin-top:8px"><button class="btn small" id="invExpand">Развернуть все</button><button class="btn small" id="invCollapse">Свернуть все</button></div>
     <div id="invTable" style="margin-top:8px"></div>
     <datalist id="units"><option value="шт"><option value="уп"><option value="кор"></datalist>
     <div class="row" style="margin-top:8px">
-      <button class="btn small" id="invAdd">+ Накладная</button>
-      <button class="btn small" id="invClear">Очистить всё</button>
+      <button class="btn small" id="invAdd">+ Строка вручную</button>
+      <button class="btn small" id="invClear">Очистить накладные</button>
     </div>
-    <div class="hint">Снимай сверху, чтобы колонка «Кол-во» целиком попала в кадр. Жёлтые строки проверь по бумаге.</div>
+    <div class="hint">Колонка «Кол-во» должна четко попадать в кадр.</div>
   </section>
 
   <!-- Шаг 2 -->
@@ -212,22 +218,25 @@ details > summary { cursor:pointer; font-weight:600; }
       <button class="btn" id="palBtnCam">📷 Снять сторону</button>
       <button class="btn" id="palBtnPick">🖼️ Из галереи</button>
     </div>
-    <div class="row" style="margin-top:8px;align-items:center"><span>Палета №</span><select id="palSel" style="font:inherit;padding:8px;border-radius:8px"></select><button class="btn small" id="palNew">+ Новая палета</button></div>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <span>Палета №</span>
+      <select id="palSel" class="sel" style="width:auto;min-width:80px"></select>
+      <button class="btn small" id="palNew">+ Новая палета</button>
+    </div>
     <div class="row" style="margin-top:8px"><button class="btn small" id="palExpand">Развернуть все</button><button class="btn small" id="palCollapse">Свернуть все</button></div>
     <div id="palGroups" style="margin-top:8px"></div>
     <button class="btn primary big" id="palRead" disabled style="margin-top:8px">Проверить палету</button>
     <div class="status" id="palStatus"></div>
-    <div class="hint">Снимай так, чтобы этикетки были читаемы: 3-4 стороны, по возможности ближе. После съёмки приложение спросит, к какой накладной и палете отнести снимки (кнопка ↪ на снимке переносит его). Обработаются только новые снимки. После проверки нажми на снимок: найденное обведено красным.</div>
     <div class="row" style="margin-top:8px">
-      <button class="btn small" id="palClear">Новая палета (сбросить результаты)</button>
-      <button class="btn small" id="btnStop">⏹ Остановить обработку</button>
+      <button class="btn small" id="palClear">Сбросить фото палет</button>
+      <button class="btn small" id="btnStop">⏹ Остановить</button>
     </div>
   </section>
 
   <!-- Товар по штрихкоду -->
   <section class="card">
     <h2>🔎 Товар по штрихкоду</h2>
-    <p class="sub" style="margin-bottom:10px">Не понятно, что за товар? Сфоткай штрихкод на коробке: найду позицию в накладных и, если нужно, приму её.</p>
+    <p class="sub" style="margin-bottom:10px">Сфотографируй штрихкод или введи цифры вручную для мгновенной сверки с накладными.</p>
     <input id="bcFile" type="file" accept="image/*" multiple hidden>
     <input id="bcCam" type="file" accept="image/*" capture="environment" hidden>
     <div class="row">
@@ -235,23 +244,22 @@ details > summary { cursor:pointer; font-weight:600; }
       <button class="btn" id="bcBtnPick">🖼️ Из галереи</button>
     </div>
     <div class="row" style="margin-top:8px;align-items:center;flex-wrap:nowrap">
-      <input id="bcManual" type="text" inputmode="numeric" placeholder="или введи цифры штрихкода" style="flex:1 1 auto;width:auto">
+      <input id="bcManual" type="text" inputmode="numeric" placeholder="Цифры штрихкода" style="flex:1 1 auto;width:auto">
       <button class="btn" id="bcFind" style="flex:0 0 auto">Найти</button>
     </div>
     <div id="bcResults" style="margin-top:10px"></div>
     <div class="row" style="margin-top:4px"><button class="btn small" id="bcClear">Очистить список</button></div>
-    <div class="hint">Читаю штрихкод сканером телефона, если его нет — через ИИ (с проверкой контрольной суммы, чтобы не принять выдуманные цифры). Штрихкод коробки (ITF-14) тоже узнаю. При наличии интернета ищу наименование в открытых базах.</div>
   </section>
 
   <!-- Шаг 3 -->
   <section class="card">
     <h2>3. Результат</h2>
     <div class="pills" id="pills"></div>
-    <button class="btn primary big" id="btnAcceptSeen" style="margin-bottom:10px">✅ Да, все верно, все совпадает по накладным (только с фото)</button>
-    <input id="resQ" type="text" placeholder="🔍 Поиск: накладная, артикул, название" style="margin-bottom:8px">
+    <button class="btn primary big" id="btnAcceptSeen" style="margin-bottom:10px">✅ Принять всё найденное</button>
+    <input id="resQ" type="text" placeholder="🔍 Поиск по результатам" style="margin-bottom:8px">
     <div class="row" style="margin-bottom:8px"><button class="btn small" id="resExpand">Развернуть все</button><button class="btn small" id="resCollapse">Свернуть все</button></div>
     <div class="row" style="margin-bottom:10px">
-      <button class="btn small" id="btnFilter">Показать только спорные</button>
+      <button class="btn small" id="btnFilter">Только спорные</button>
       <button class="btn small" id="btnCsv">⬇️ CSV</button>
       <button class="btn small" id="btnAct">📝 Акт расхождений</button>
       <button class="btn small primary" id="btnFinish">✔ Завершить приёмку</button>
@@ -260,30 +268,806 @@ details > summary { cursor:pointer; font-weight:600; }
     <div id="extras"></div>
   </section>
 
+  <!-- История -->
   <section class="card">
-    <h2>📚 История</h2>
+    <h2>📚 История приёмок</h2>
     <div id="histBox"></div>
-    <div class="row" style="margin-top:8px"><button class="btn small" id="bkSave">💾 Скачать копию</button><button class="btn small" id="bkLoad">📥 Загрузить копию</button></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn small" id="bkSave">💾 Экспорт архива</button>
+      <button class="btn small" id="bkLoad">📥 Импорт архива</button>
+    </div>
     <input id="bkFile" type="file" accept=".json,application/json" hidden>
-    <div class="hint">«Завершить приёмку» сохраняет результат сюда и очищает экран для новой. Каталог «штук в коробке» остаётся.</div>
   </section>
-
-  <p class="priv">Фото отправляются в Google Gemini. На бесплатном уровне Google может использовать присланные данные для улучшения своих сервисов. Убедись, что на работе это разрешено.</p>
+  <p class="priv">Внимание: данные изображений направляются в API Gemini/Groq. Соблюдайте регламенты конфиденциальности вашей компании.</p>
 </main>
 
-<div id="act" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bg);overflow:auto;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 20px"><div style="max-width:760px;margin:0 auto"><h2>📝 Акт расхождений</h2><textarea id="actText" style="width:100%;height:55vh;font:inherit;font-size:14px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--input-bg);color:var(--text)"></textarea><div class="row" style="margin-top:8px"><button class="btn primary" id="actCopy">Копировать</button><button class="btn" id="actTxt">Скачать .txt</button><button class="btn" id="actClose">Закрыть</button></div><div class="hint">Текст можно править перед отправкой.</div></div></div>
-<div id="assign"><div class="sh">
-  <h2 id="asTitle" style="margin:0">Куда отнести снимки?</h2>
-  <div class="row" style="align-items:center;flex-wrap:nowrap"><span>Палета №</span><select id="asPal" class="sel" style="width:auto;min-width:70px"></select><button class="btn small" id="asPalNew" style="flex:0 0 auto">+ Новая</button></div>
-  <input id="asQ" type="text" placeholder="🔍 Найти накладную">
-  <div id="assignList"></div>
-  <div class="row"><button class="btn" id="asMixed">🔀 Смешанная палета</button><button class="btn" id="asLater">Позже</button></div>
-</div></div>
+<!-- Модальные окна -->
+<div id="act" style="display:none;position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 20px">
+  <div style="max-width:760px;margin:0 auto">
+    <h2>📝 Акт расхождений</h2>
+    <textarea id="actText" style="width:100%;height:55vh;font:inherit;font-size:14px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--input-bg);color:var(--text)"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn primary" id="actCopy">Копировать</button>
+      <button class="btn" id="actTxt">Скачать .txt</button>
+      <button class="btn" id="actClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div id="assign">
+  <div class="sh">
+    <h2 id="asTitle" style="margin:0">Куда отнести снимки?</h2>
+    <div class="row" style="align-items:center;flex-wrap:nowrap">
+      <span>Палета №</span>
+      <select id="asPal" class="sel" style="width:auto;min-width:70px"></select>
+      <button class="btn small" id="asPalNew" style="flex:0 0 auto">+ Новая</button>
+    </div>
+    <input id="asQ" type="text" placeholder="🔍 Найти накладную">
+    <div id="assignList"></div>
+    <div class="row">
+      <button class="btn" id="asMixed">🔀 Смешанная палета</button>
+      <button class="btn" id="asLater">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <div id="viewer">
   <div id="vTop"><div id="vTitle"></div><button class="btn" id="vZoom">🔍 Увеличить</button><button class="btn" id="vClose">✕</button></div>
   <div id="vStage"><div id="vWrap"><img id="vImg" alt=""></div></div>
   <div id="vBot"><button class="btn" id="vPrev">◀</button><div id="vCap"></div><button class="btn" id="vNext">▶</button></div>
 </div>
-<div id="cam"><video id="camVideo" playsinline muted autoplay></video><div id="camFlash"></div>
-  <div id="camTools"><button class="btn" id="camTorch" style="display:none">🔦 Свет</button><button class="btn" id="camLens">🔄 Объектив</button><label id="camZoomBox">🔍 <input type="range" id="camZoom"><span id="camZoomV" style="min-width:36px"></span></label></div>
-  <div class="camBar"><span id="camN">Снято: 0</span><button id="camShot" aria-label="Снять"></button><button class="b
+
+<!-- Модуль встроенной видокамеры -->
+<div id="cam">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div id="camFlash"></div>
+  <div id="camTools">
+    <button class="btn" id="camLens">🔄 Камера</button>
+  </div>
+  <div class="camBar">
+    <span id="camN">Снято: 0</span>
+    <button id="camShot" aria-label="Снять"></button>
+    <button class="btn" id="camClose" style="min-height:36px;padding:4px 10px">✕</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // --- Состояние приложения ---
+  const state = {
+    apiKey: localStorage.getItem('p_apiKey') || '',
+    model: localStorage.getItem('p_model') || 'gemini-2.5-flash',
+    aiMode: localStorage.getItem('p_aiMode') || 'gemini',
+    groqKey: localStorage.getItem('p_groqKey') || '',
+    lightModel: localStorage.getItem('p_lightModel') || 'llama-3.2-11b-vision-preview',
+    invoices: JSON.parse(localStorage.getItem('p_invoices') || '[]'),
+    pallets: JSON.parse(localStorage.getItem('p_pallets') || '{"1": []}'),
+    activePallet: '1',
+    history: JSON.parse(localStorage.getItem('p_history') || '[]'),
+    invPhotos: [],
+    palPhotos: [],
+    filterOnlyDiscrepancies: false,
+    cameraStream: null,
+    cameraFacing: 'environment',
+    cameraTarget: 'inv'
+  };
+
+  // --- Хелперы локального хранилища ---
+  const saveState = () => {
+    localStorage.setItem('p_apiKey', state.apiKey);
+    localStorage.setItem('p_model', state.model);
+    localStorage.setItem('p_aiMode', state.aiMode);
+    localStorage.setItem('p_groqKey', state.groqKey);
+    localStorage.setItem('p_lightModel', state.lightModel);
+    localStorage.setItem('p_invoices', JSON.stringify(state.invoices));
+    localStorage.setItem('p_pallets', JSON.stringify(state.pallets));
+    localStorage.setItem('p_history', JSON.stringify(state.history));
+  };
+
+  // --- Инициализация полей настроек ---
+  const elApiKey = document.getElementById('apiKey');
+  const elModel = document.getElementById('model');
+  const elAiMode = document.getElementById('aiMode');
+  const elGroqKey = document.getElementById('groqKey');
+  const elLightModel = document.getElementById('lightModel');
+  const elKeyStatus = document.getElementById('keyStatus');
+
+  elApiKey.value = state.apiKey;
+  elModel.value = state.model;
+  elAiMode.value = state.aiMode;
+  elGroqKey.value = state.groqKey;
+  elLightModel.value = state.lightModel;
+
+  document.getElementById('btnSaveKey').addEventListener('click', () => {
+    state.apiKey = elApiKey.value.trim();
+    state.model = elModel.value.trim() || 'gemini-2.5-flash';
+    state.aiMode = elAiMode.value;
+    state.groqKey = elGroqKey.value.trim();
+    state.lightModel = elLightModel.value.trim() || 'llama-3.2-11b-vision-preview';
+    saveState();
+    elKeyStatus.className = 'status';
+    elKeyStatus.textContent = 'Настройки успешно сохранены.';
+  });
+
+  // --- Преобразование изображений в Base64 ---
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      name: file.name,
+      dataUrl: reader.result,
+      base64: reader.result.split(',')[1],
+      type: file.type || 'image/jpeg'
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  // --- Работа с камерой WebRTC ---
+  const camModal = document.getElementById('cam');
+  const camVideo = document.getElementById('camVideo');
+  const camN = document.getElementById('camN');
+  let camSessionPhotos = 0;
+
+  const startCamera = async (target = 'inv') => {
+    state.cameraTarget = target;
+    camSessionPhotos = 0;
+    camN.textContent = 'Снято: 0';
+    try {
+      state.cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: state.cameraFacing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      camVideo.srcObject = state.cameraStream;
+      camModal.style.display = 'flex';
+    } catch (err) {
+      alert('Не удалось запустить камеру. Используйте стандартный выбор файла.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (state.cameraStream) {
+      state.cameraStream.getTracks().forEach(t => t.stop());
+      state.cameraStream = null;
+    }
+    camModal.style.display = 'none';
+  };
+
+  document.getElementById('camClose').addEventListener('click', stopCamera);
+
+  document.getElementById('camShot').addEventListener('click', () => {
+    if (!camVideo.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = camVideo.videoWidth;
+    canvas.height = camVideo.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(camVideo, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const photoObj = {
+      name: `snap_${Date.now()}.jpg`,
+      dataUrl: dataUrl,
+      base64: dataUrl.split(',')[1],
+      type: 'image/jpeg'
+    };
+
+    if (state.cameraTarget === 'inv') {
+      state.invPhotos.push(photoObj);
+      renderThumbs('invThumbs', state.invPhotos);
+      document.getElementById('invRead').disabled = false;
+    } else if (state.cameraTarget === 'pal') {
+      state.palPhotos.push(photoObj);
+      renderThumbs('palGroups', state.palPhotos);
+      document.getElementById('palRead').disabled = false;
+    } else if (state.cameraTarget === 'bc') {
+      handleBarcodeScan(photoObj);
+      stopCamera();
+      return;
+    }
+
+    camSessionPhotos++;
+    camN.textContent = `Снято: ${camSessionPhotos}`;
+  });
+
+  document.getElementById('camLens').addEventListener('click', () => {
+    state.cameraFacing = state.cameraFacing === 'environment' ? 'user' : 'environment';
+    stopCamera();
+    startCamera(state.cameraTarget);
+  });
+
+  // --- Привязка системных селекторов файлов ---
+  const setupPicker = (btnId, inputId, isCam, target) => {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    btn.addEventListener('click', () => {
+      if (isCam && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        startCamera(target);
+      } else {
+        input.click();
+      }
+    });
+
+    input.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      for (const f of files) {
+        const item = await fileToBase64(f);
+        if (target === 'inv') state.invPhotos.push(item);
+        if (target === 'pal') state.palPhotos.push(item);
+        if (target === 'bc') handleBarcodeScan(item);
+      }
+      input.value = '';
+      if (target === 'inv') {
+        renderThumbs('invThumbs', state.invPhotos);
+        document.getElementById('invRead').disabled = state.invPhotos.length === 0;
+      }
+      if (target === 'pal') {
+        renderThumbs('palGroups', state.palPhotos);
+        document.getElementById('palRead').disabled = state.palPhotos.length === 0;
+      }
+    });
+  };
+
+  setupPicker('invBtnCam', 'invCam', true, 'inv');
+  setupPicker('invBtnPick', 'invFile', false, 'inv');
+  setupPicker('palBtnCam', 'palCam', true, 'pal');
+  setupPicker('palBtnPick', 'palFile', false, 'pal');
+  setupPicker('bcBtnCam', 'bcCam', true, 'bc');
+  setupPicker('bcBtnPick', 'bcFile', false, 'bc');
+
+  // --- Превью миниатюр ---
+  const renderThumbs = (containerId, photosList) => {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    photosList.forEach((p, idx) => {
+      const fig = document.createElement('figure');
+      const img = document.createElement('img');
+      img.src = p.dataUrl;
+      img.addEventListener('click', () => openViewer(p.dataUrl, p.name));
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        photosList.splice(idx, 1);
+        renderThumbs(containerId, photosList);
+        if (containerId === 'invThumbs') document.getElementById('invRead').disabled = photosList.length === 0;
+        if (containerId === 'palGroups') document.getElementById('palRead').disabled = photosList.length === 0;
+      });
+      fig.appendChild(img);
+      fig.appendChild(del);
+      el.appendChild(fig);
+    });
+  };
+
+  // --- Универсальный запрос к ИИ (Gemini / Groq) ---
+  const callAI = async (promptText, base64Images = []) => {
+    const isGemini = state.aiMode === 'gemini' || (state.aiMode === 'auto' && state.apiKey);
+
+    if (isGemini) {
+      if (!state.apiKey) throw new Error('Не указан ключ Google Gemini API в настройках.');
+      const parts = [{ text: promptText }];
+      base64Images.forEach(img => {
+        parts.push({
+          inlineData: {
+            mimeType: img.type,
+            data: img.base64
+          }
+        });
+      });
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts }] })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Ошибка Gemini API: ${res.status}`);
+      }
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      if (!state.groqKey) throw new Error('Не указан ключ Groq API.');
+      const content = [{ type: 'text', text: promptText }];
+      base64Images.forEach(img => {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.type};base64,${img.base64}` }
+        });
+      });
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.groqKey}`
+        },
+        body: JSON.stringify({
+          model: state.lightModel,
+          messages: [{ role: 'user', content }]
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Ошибка Groq API: ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || '';
+    }
+  };
+
+  // --- Распознавание накладных ---
+  const elInvStatus = document.getElementById('invStatus');
+  document.getElementById('invRead').addEventListener('click', async () => {
+    if (state.invPhotos.length === 0) return;
+    elInvStatus.className = 'status';
+    elInvStatus.textContent = 'Идёт распознавание накладной через ИИ... Пожалуйста, подождите.';
+
+    const prompt = `Распознай накладную/УПД на русском языке. 
+Верни ТОЛЬКО валидный JSON-массив объектов без кавычек markdown. Формат:
+[
+  {
+    "sku": "Артикул или пустая строка",
+    "name": "Полное точное наименование товара",
+    "qty": 10,
+    "unit": "шт",
+    "barcode": "штрихкод если есть на листе"
+  }
+]`;
+
+    try {
+      const resp = await callAI(prompt, state.invPhotos);
+      const cleanJson = resp.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+
+      const invNumber = document.getElementById('invNo').value.trim() || `Накладная от ${new Date().toLocaleDateString('ru')}`;
+      state.invoices.push({
+        id: 'inv_' + Date.now(),
+        no: invNumber,
+        items: parsed.map((item, idx) => ({
+          id: `item_${Date.now()}_${idx}`,
+          sku: item.sku || '',
+          name: item.name || 'Товар без наименования',
+          qty: Number(item.qty) || 0,
+          unit: item.unit || 'шт',
+          barcode: item.barcode || '',
+          receivedQty: 0
+        }))
+      });
+
+      saveState();
+      renderInvoices();
+      renderResults();
+      elInvStatus.textContent = `Успешно загружено позиций: ${parsed.length}`;
+      state.invPhotos = [];
+      renderThumbs('invThumbs', state.invPhotos);
+      document.getElementById('invRead').disabled = true;
+    } catch (err) {
+      elInvStatus.className = 'status err';
+      elInvStatus.textContent = 'Ошибка распознавания: ' + err.message;
+    }
+  });
+
+  // --- Отрисовка накладных (Шаг 1) ---
+  const elInvTable = document.getElementById('invTable');
+  const renderInvoices = () => {
+    elInvTable.innerHTML = '';
+    const q = document.getElementById('invQ').value.toLowerCase().trim();
+
+    state.invoices.forEach((inv, invIdx) => {
+      const det = document.createElement('details');
+      det.className = 'grp';
+      det.open = true;
+
+      const sum = document.createElement('summary');
+      sum.innerHTML = `<span class="gt">📄 ${inv.no}</span><span class="sm">(${inv.items.length} поз.)</span>`;
+      det.appendChild(sum);
+
+      const gb = document.createElement('div');
+      gb.className = 'gb';
+
+      inv.items.forEach((item, itemIdx) => {
+        if (q && !item.name.toLowerCase().includes(q) && !item.sku.toLowerCase().includes(q)) return;
+
+        const row = document.createElement('div');
+        row.className = 'inv';
+        row.innerHTML = `
+          <input type="text" value="${item.sku}" placeholder="Артикул" data-f="sku">
+          <input type="text" value="${item.name}" placeholder="Наименование" data-f="name">
+          <input type="number" value="${item.qty}" placeholder="Кол-во" data-f="qty">
+          <button title="Удалить">✕</button>
+        `;
+
+        row.querySelectorAll('input').forEach(inp => {
+          inp.addEventListener('input', (e) => {
+            const field = e.target.dataset.f;
+            item[field] = field === 'qty' ? Number(e.target.value) : e.target.value;
+            saveState();
+            renderResults();
+          });
+        });
+
+        row.querySelector('button').addEventListener('click', () => {
+          inv.items.splice(itemIdx, 1);
+          saveState();
+          renderInvoices();
+          renderResults();
+        });
+
+        gb.appendChild(row);
+      });
+
+      det.appendChild(gb);
+      elInvTable.appendChild(det);
+    });
+  };
+
+  document.getElementById('invQ').addEventListener('input', renderInvoices);
+
+  document.getElementById('invAdd').addEventListener('click', () => {
+    if (state.invoices.length === 0) {
+      state.invoices.push({ id: 'inv_' + Date.now(), no: 'Накладная 1', items: [] });
+    }
+    state.invoices[0].items.push({
+      id: 'item_' + Date.now(),
+      sku: '',
+      name: '',
+      qty: 1,
+      unit: 'шт',
+      barcode: '',
+      receivedQty: 0
+    });
+    saveState();
+    renderInvoices();
+    renderResults();
+  });
+
+  document.getElementById('invClear').addEventListener('click', () => {
+    if (confirm('Очистить все накладные?')) {
+      state.invoices = [];
+      saveState();
+      renderInvoices();
+      renderResults();
+    }
+  });
+
+  // --- Распознавание палет (Шаг 2) ---
+  const elPalStatus = document.getElementById('palStatus');
+  document.getElementById('palRead').addEventListener('click', async () => {
+    if (state.palPhotos.length === 0) return;
+    elPalStatus.className = 'status';
+    elPalStatus.textContent = 'Анализирую фото палет и сопоставляю с позициями...';
+
+    // Формируем список ожидаемых товаров
+    const expected = [];
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        expected.push({ id: it.id, name: it.name, sku: it.sku, barcode: it.barcode });
+      });
+    });
+
+    const prompt = `Проанализируй этикетки, маркировку и количество упаковок/коробок на палете.
+Вот список ожидаемых товаров: ${JSON.stringify(expected)}
+Верни JSON-массив найденных товаров:
+[
+  {
+    "id": "id из списка если удалось сопоставить или null",
+    "name": "распознанное название или маркировка",
+    "countedQty": 12,
+    "confidence": "high/medium/low"
+  }
+]`;
+
+    try {
+      const resp = await callAI(prompt, state.palPhotos);
+      const cleanJson = resp.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+
+      parsed.forEach(found => {
+        if (found.id) {
+          state.invoices.forEach(inv => {
+            const it = inv.items.find(i => i.id === found.id);
+            if (it) it.receivedQty += Number(found.countedQty) || 0;
+          });
+        }
+      });
+
+      saveState();
+      renderResults();
+      elPalStatus.textContent = `Обработано. Найдено и зачтено позиций: ${parsed.length}`;
+      state.palPhotos = [];
+      renderThumbs('palGroups', state.palPhotos);
+      document.getElementById('palRead').disabled = true;
+    } catch (err) {
+      elPalStatus.className = 'status err';
+      elPalStatus.textContent = 'Ошибка проверки палеты: ' + err.message;
+    }
+  });
+
+  document.getElementById('palClear').addEventListener('click', () => {
+    state.palPhotos = [];
+    renderThumbs('palGroups', state.palPhotos);
+    document.getElementById('palRead').disabled = true;
+    elPalStatus.textContent = '';
+  });
+
+  // --- Штрихкоды ---
+  const handleBarcodeScan = async (imgObj) => {
+    const elResults = document.getElementById('bcResults');
+    elResults.innerHTML = '<div class="hint">Считывание штрихкода...</div>';
+
+    // Попытка распознать системным BarcodeDetector
+    if ('BarcodeDetector' in window) {
+      try {
+        const detector = new BarcodeDetector();
+        const img = new Image();
+        img.src = imgObj.dataUrl;
+        await img.decode();
+        const barcodes = await detector.detect(img);
+        if (barcodes.length > 0) {
+          matchBarcode(barcodes[0].rawValue);
+          return;
+        }
+      } catch (e) {
+        console.warn('BarcodeDetector fallback to AI');
+      }
+    }
+
+    // Резервный вариант через AI
+    try {
+      const prompt = 'Найди штрихкод на изображении и верни ТОЛЬКО последовательность его цифр (EAN-13, Code-128, ITF-14). Без лишнего текста.';
+      const res = await callAI(prompt, [imgObj]);
+      const digits = res.trim().replace(/\D/g, '');
+      if (digits) {
+        matchBarcode(digits);
+      } else {
+        elResults.innerHTML = '<div class="status err">Штрихкод не распознан.</div>';
+      }
+    } catch (err) {
+      elResults.innerHTML = `<div class="status err">Ошибка: ${err.message}</div>`;
+    }
+  };
+
+  const matchBarcode = (code) => {
+    const elResults = document.getElementById('bcResults');
+    let matchedItem = null;
+    let matchedInv = null;
+
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        if (it.barcode === code || (it.sku && it.sku === code)) {
+          matchedItem = it;
+          matchedInv = inv;
+        }
+      });
+    });
+
+    if (matchedItem) {
+      elResults.innerHTML = `
+        <div class="item ok">
+          <div class="t">✅ Найден товар: ${matchedItem.name}</div>
+          <div class="m">Накладная: ${matchedInv.no} | Артикул: ${matchedItem.sku || '—'} | ШК: ${code}</div>
+          <div class="msg">План: ${matchedItem.qty} ${matchedItem.unit} | Принято: ${matchedItem.receivedQty} ${matchedItem.unit}</div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn small primary" id="bcAccept1">+1 ${matchedItem.unit}</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('bcAccept1').addEventListener('click', () => {
+        matchedItem.receivedQty += 1;
+        saveState();
+        renderResults();
+        matchBarcode(code);
+      });
+    } else {
+      elResults.innerHTML = `
+        <div class="item warn">
+          <div class="t">⚠️ Штрихкод ${code} не найден в текущих накладных</div>
+          <div class="m">Проверьте корректность или внесите товар вручную в накладную.</div>
+        </div>
+      `;
+    }
+  };
+
+  document.getElementById('bcFind').addEventListener('click', () => {
+    const val = document.getElementById('bcManual').value.trim();
+    if (val) matchBarcode(val);
+  });
+
+  document.getElementById('bcClear').addEventListener('click', () => {
+    document.getElementById('bcResults').innerHTML = '';
+    document.getElementById('bcManual').value = '';
+  });
+
+  // --- Результаты сверки (Шаг 3) ---
+  const elItems = document.getElementById('items');
+  const elPills = document.getElementById('pills');
+
+  const renderResults = () => {
+    elItems.innerHTML = '';
+    const q = document.getElementById('resQ').value.toLowerCase().trim();
+
+    let totalItems = 0;
+    let matchedCount = 0;
+    let discrepancyCount = 0;
+
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        totalItems++;
+        const isMatched = it.receivedQty === it.qty;
+        const isOver = it.receivedQty > it.qty;
+        const isUnder = it.receivedQty < it.qty;
+
+        if (isMatched) matchedCount++;
+        else discrepancyCount++;
+
+        if (state.filterOnlyDiscrepancies && isMatched) return;
+        if (q && !it.name.toLowerCase().includes(q) && !it.sku.toLowerCase().includes(q)) return;
+
+        let statusClass = 'ok';
+        let statusText = 'Совпадает';
+        if (isUnder) { statusClass = 'warn'; statusText = `Недостача: ${it.qty - it.receivedQty}`; }
+        if (isOver) { statusClass = 'bad'; statusText = `Излишек: +${it.receivedQty - it.qty}`; }
+        if (it.receivedQty === 0) { statusClass = 'miss'; statusText = 'Не поступило'; }
+
+        const card = document.createElement('div');
+        card.className = `item ${statusClass}`;
+        card.innerHTML = `
+          <div class="t">${it.name}</div>
+          <div class="m">Накладная: ${inv.no} | Артикул: ${it.sku || '—'}</div>
+          <div class="msg"><strong>${statusText}</strong> (План: ${it.qty} ${it.unit} / Факт: ${it.receivedQty} ${it.unit})</div>
+          <div class="ctl">
+            <div>
+              <label>Факт (ручная правка):</label>
+              <input type="number" value="${it.receivedQty}" data-id="${it.id}">
+            </div>
+          </div>
+        `;
+
+        card.querySelector('input').addEventListener('input', (e) => {
+          it.receivedQty = Number(e.target.value) || 0;
+          saveState();
+          renderResults();
+        });
+
+        elItems.appendChild(card);
+      });
+    });
+
+    elPills.innerHTML = `
+      <div class="pill">Всего позиций: ${totalItems}</div>
+      <div class="pill" style="background:var(--ok-bg)">Сходится: ${matchedCount}</div>
+      <div class="pill ${discrepancyCount > 0 ? 'attn' : ''}">Расхождений: ${discrepancyCount}</div>
+    `;
+  };
+
+  document.getElementById('resQ').addEventListener('input', renderResults);
+
+  document.getElementById('btnFilter').addEventListener('click', (e) => {
+    state.filterOnlyDiscrepancies = !state.filterOnlyDiscrepancies;
+    e.target.style.background = state.filterOnlyDiscrepancies ? 'var(--warn-bg)' : '';
+    renderResults();
+  });
+
+  document.getElementById('btnAcceptSeen').addEventListener('click', () => {
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        it.receivedQty = it.qty;
+      });
+    });
+    saveState();
+    renderResults();
+  });
+
+  // --- Экспорт CSV ---
+  document.getElementById('btnCsv').addEventListener('click', () => {
+    let csv = '\uFEFFНакладная;Артикул;Наименование;План;Факт;Разница;Ед.изм\n';
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        const diff = it.receivedQty - it.qty;
+        csv += `"${inv.no}";"${it.sku}";"${it.name}";${it.qty};${it.receivedQty};${diff};"${it.unit}"\n`;
+      });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `priemka_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- Акт расхождений ---
+  const elActModal = document.getElementById('act');
+  const elActText = document.getElementById('actText');
+
+  document.getElementById('btnAct').addEventListener('click', () => {
+    let act = `АКТ УСТАНОВЛЕННЫХ РАСХОЖДЕНИЙ\nДата: ${new Date().toLocaleString('ru')}\n\n`;
+    let count = 0;
+
+    state.invoices.forEach(inv => {
+      inv.items.forEach(it => {
+        if (it.receivedQty !== it.qty) {
+          count++;
+          const diff = it.receivedQty - it.qty;
+          const status = diff > 0 ? `Излишек (+${diff})` : `Недостача (${diff})`;
+          act += `${count}. ${it.name} (Арт: ${it.sku || 'б/а'})\n   Накладная: ${inv.no}\n   План: ${it.qty} ${it.unit} | Факт: ${it.receivedQty} ${it.unit} -> ${status}\n\n`;
+        }
+      });
+    });
+
+    if (count === 0) act += 'Расхождений не выявлено. Позиции приняты в полном объёме.\n';
+
+    elActText.value = act;
+    elActModal.style.display = 'block';
+  });
+
+  document.getElementById('actClose').addEventListener('click', () => elActModal.style.display = 'none');
+  document.getElementById('actCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(elActText.value);
+    alert('Текст акта скопирован в буфер обмена.');
+  });
+  document.getElementById('actTxt').addEventListener('click', () => {
+    const blob = new Blob([elActText.value], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `akt_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- Завершение приёмки и сохранение в историю ---
+  document.getElementById('btnFinish').addEventListener('click', () => {
+    if (state.invoices.length === 0) return;
+    if (confirm('Завершить текущую приёмку? Данные будут сохранены в историю.')) {
+      state.history.unshift({
+        id: 'hist_' + Date.now(),
+        date: new Date().toLocaleString('ru'),
+        invoices: [...state.invoices]
+      });
+      state.invoices = [];
+      saveState();
+      renderInvoices();
+      renderResults();
+      renderHistory();
+      alert('Приёмка успешно сохранена в истории.');
+    }
+  });
+
+  const renderHistory = () => {
+    const elHist = document.getElementById('histBox');
+    elHist.innerHTML = '';
+    if (state.history.length === 0) {
+      elHist.innerHTML = '<div class="empty">Архив приёмок пуст.</div>';
+      return;
+    }
+
+    state.history.forEach((h, idx) => {
+      const row = document.createElement('div');
+      row.className = 'hist';
+      row.innerHTML = `
+        <div class="grow"><strong>${h.date}</strong> (${h.invoices.length} накладных)</div>
+        <button class="btn small" data-idx="${idx}">Восстановить</button>
+      `;
+      row.querySelector('button').addEventListener('click', () => {
+        if (confirm('Восстановить эту приёмку на экран? Текущие несохраненные данные будут заменены.')) {
+          state.invoices = h.invoices;
+          saveState();
+          renderInvoices();
+          renderResults();
+        }
+      });
+      elHist.appendChild(row);
+    });
+  };
+
+  // --- Резервная копия JSON ---
+  document.getElementById('bkSave').addEventListener('click', () => {
+    const data = JSON.stringify(state, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download
